@@ -1,107 +1,98 @@
 package main
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "os"
-    "os/signal"
-    "syscall"
-    "time"
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-    "github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
-    "github.com/cugtyt/agentlauncher-distributed/internal/events"
-    "github.com/cugtyt/agentlauncher-distributed/internal/handlers"
-    "github.com/cugtyt/agentlauncher-distributed/internal/store"
+	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
+	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
+	"github.com/cugtyt/agentlauncher-distributed/internal/events"
+	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
+	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
+	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
 type MessageRuntime struct {
-    eventBus     *eventbus.DistributedEventBus
-    messageStore *store.MessageStore
-    handler      *handlers.MessageHandler
+	eventBus     *eventbus.DistributedEventBus
+	messageStore *store.MessageStore
+	handler      *handlers.MessageHandler
 }
 
-func NewMessageRuntime(eventBus *eventbus.DistributedEventBus, messageStore *store.MessageStore) *MessageRuntime {
-    handler := handlers.NewMessageHandler(eventBus, messageStore)
-    
-    return &MessageRuntime{
-        eventBus:     eventBus,
-        messageStore: messageStore,
-        handler:      handler,
-    }
+func NewMessageRuntime() (*MessageRuntime, error) {
+	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
+	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
+
+	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	messageStore := store.NewMessageStore(redisURL)
+	handler := handlers.NewMessageHandler(eventBus, messageStore)
+
+	return &MessageRuntime{
+		eventBus:     eventBus,
+		messageStore: messageStore,
+		handler:      handler,
+	}, nil
+}
+
+func (mr *MessageRuntime) Close() error {
+	mr.eventBus.Close()
+	mr.messageStore.Close()
+	return nil
 }
 
 func (mr *MessageRuntime) Start() error {
-    // Subscribe to message add events
-    err := mr.eventBus.Subscribe("message.add", "message-runtime", func(ctx context.Context, data []byte) {
-        var event events.MessagesAddEvent
-        if err := json.Unmarshal(data, &event); err != nil {
-            log.Printf("Failed to unmarshal message add event: %v", err)
-            return
-        }
-        mr.handler.HandleMessageAdd(context.Background(), event)
-    })
-    if err != nil {
-        return err
-    }
+	err := mr.eventBus.Subscribe(events.MessageAddEventName, runtimes.MessageRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.MessagesAddEvent](data, events.MessageAddEventName); ok {
+			mr.handler.HandleMessageAdd(ctx, event)
+		}
+	})
+	if err != nil {
+		return err
+	}
 
-    // Subscribe to message get requests
-    err = mr.eventBus.Subscribe("message.get", "message-runtime", func(ctx context.Context, data []byte) {
-        var event events.MessageGetRequestEvent
-        if err := json.Unmarshal(data, &event); err != nil {
-            log.Printf("Failed to unmarshal message get event: %v", err)
-            return
-        }
-        mr.handler.HandleMessageGet(context.Background(), event)
-    })
+	err = mr.eventBus.Subscribe(events.MessageGetEventName, runtimes.MessageRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.MessageGetRequestEvent](data, events.MessageGetEventName); ok {
+			mr.handler.HandleMessageGet(ctx, event)
+		}
+	})
 
-    return err
+	return err
 }
 
 func main() {
-    natsURL := getEnv("NATS_URL", "nats://localhost:4222")
-    redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
+	messageRuntime, err := NewMessageRuntime()
+	if err != nil {
+		log.Fatalf("Failed to initialize message runtime: %v", err)
+	}
 
-    // Initialize event bus
-    eventBus, err := eventbus.NewDistributedEventBus(natsURL)
-    if err != nil {
-        log.Fatalf("Failed to initialize event bus: %v", err)
-    }
+	if err := messageRuntime.Start(); err != nil {
+		log.Fatalf("Failed to start message runtime: %v", err)
+	}
 
-    // Initialize message store
-    messageStore := store.NewMessageStore(redisURL)
+	log.Println("Message Runtime started successfully")
 
-    // Create message runtime
-    runtime := NewMessageRuntime(eventBus, messageStore)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 
-    // Start subscriptions
-    if err := runtime.Start(); err != nil {
-        log.Fatalf("Failed to start message runtime: %v", err)
-    }
+	log.Println("Shutting down Message Runtime...")
 
-    log.Println("Message Runtime started successfully")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-    // Wait for interrupt signal
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    <-quit
+	messageRuntime.Close()
 
-    log.Println("Shutting down Message Runtime...")
-
-    // Graceful shutdown
-    _, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-    defer cancel()
-
-    // Close connections
-    eventBus.Close()
-    messageStore.Close()
-
-    log.Println("Message Runtime stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-    if value := os.Getenv(key); value != "" {
-        return value
-    }
-    return defaultValue
+	select {
+	case <-ctx.Done():
+		log.Println("Shutdown timeout exceeded")
+	default:
+		log.Println("Message Runtime stopped")
+	}
 }
