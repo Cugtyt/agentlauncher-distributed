@@ -1,10 +1,15 @@
 package events
 
+import (
+	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
+)
+
 type AgentCreateEvent struct {
-	AgentID string   `json:"agent_id"`
-	Task    string   `json:"task,omitempty"`
-	Context string   `json:"context,omitempty"`
-	ToolSet []string `json:"tool_set,omitempty"`
+	AgentID      string                    `json:"agent_id"`
+	Task         string                    `json:"task"`
+	ToolSchemas  []llminterface.ToolSchema `json:"tool_schemas"`
+	Conversation []llminterface.Message    `json:"conversation"`
+	SystemPrompt string                    `json:"system_prompt"`
 }
 
 type AgentStartEvent struct {
@@ -12,8 +17,8 @@ type AgentStartEvent struct {
 }
 
 type AgentFinishEvent struct {
-	AgentID string      `json:"agent_id"`
-	Result  any `json:"result,omitempty"`
+	AgentID string `json:"agent_id"`
+	Result  string `json:"result"`
 }
 
 type AgentErrorEvent struct {
