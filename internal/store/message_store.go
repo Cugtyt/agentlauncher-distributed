@@ -5,7 +5,7 @@ import (
     "fmt"
     "time"
 
-    "github.com/yourusername/agentlauncher-distributed/internal/events"
+    "github.com/cugtyt/agentlauncher-distributed/internal/events"
 )
 
 type MessageStore struct {

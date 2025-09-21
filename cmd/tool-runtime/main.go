@@ -9,10 +9,10 @@ import (
     "syscall"
     "time"
 
-    "github.com/yourusername/agentlauncher-distributed/internal/eventbus"
-    "github.com/yourusername/agentlauncher-distributed/internal/events"
-    "github.com/yourusername/agentlauncher-distributed/internal/handlers"
-    "github.com/yourusername/agentlauncher-distributed/internal/tools"
+    "github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
+    "github.com/cugtyt/agentlauncher-distributed/internal/events"
+    "github.com/cugtyt/agentlauncher-distributed/internal/handlers"
+    "github.com/cugtyt/agentlauncher-distributed/internal/tools"
 )
 
 type ToolRuntime struct {

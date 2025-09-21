@@ -7,9 +7,9 @@ import (
     "time"
 
     "github.com/google/uuid"
-    "github.com/yourusername/agentlauncher-distributed/internal/eventbus"
-    "github.com/yourusername/agentlauncher-distributed/internal/events"
-    "github.com/yourusername/agentlauncher-distributed/internal/store"
+    "github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
+    "github.com/cugtyt/agentlauncher-distributed/internal/events"
+    "github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
 type AgentHandler struct {

@@ -1,14 +1,34 @@
 #!/bin/bash
 
-echo "Setting up port forwarding for agentlauncher API..."
+set -e
 
-# Color output
+# Colors for output
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Port forwarding agent-launcher service to localhost:8080${NC}"
-echo -e "${GREEN}API will be available at: http://localhost:8080${NC}"
-echo -e "${YELLOW}Press Ctrl+C to stop port forwarding${NC}\n"
+echo -e "${YELLOW}Building Docker images for agentlauncher-distributed...${NC}"
 
-kubectl port-forward -n agentlauncher service/agent-launcher 8080:8080
+# Docker registry
+REGISTRY="agentlauncher"
+
+# Build services
+services=("agent-launcher" "agent-runtime" "llm-runtime" "tool-runtime" "message-runtime")
+
+for service in "${services[@]}"; do
+    echo -e "${YELLOW}Building $service...${NC}"
+    docker build -f deployments/docker/Dockerfile.$service -t $REGISTRY/$service:latest .
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ $service built successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to build $service${NC}"
+        exit 1
+    fi
+done
+
+echo -e "${GREEN}All images built successfully!${NC}"
+
+# List built images
+echo -e "\n${YELLOW}Built images:${NC}"
+docker images | grep $REGISTRY

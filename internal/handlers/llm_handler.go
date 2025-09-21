@@ -5,10 +5,10 @@ import (
     "log"
     "time"
 
-    "github.com/yourusername/agentlauncher-distributed/internal/eventbus"
-    "github.com/yourusername/agentlauncher-distributed/internal/events"
-    "github.com/yourusername/agentlauncher-distributed/internal/llminterface"
-    "github.com/yourusername/agentlauncher-distributed/internal/store"
+    "github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
+    "github.com/cugtyt/agentlauncher-distributed/internal/events"
+    "github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
+    "github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
 type LLMHandler struct {
