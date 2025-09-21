@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-runtime
+  namespace: agentlauncher
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: tool-runtime
+  template:
+    metadata:
+      labels:
+        app: tool-runtime
+    spec:
+      containers:
+      - name: tool-runtime
+        image: agentlauncher/tool-runtime:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NATS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: agentlauncher-config
+              key: NATS_URL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-runtime
+  namespace: agentlauncher
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llm-runtime
+  template:
+    metadata:
+      labels:
+        app: llm-runtime
+    spec:
+      containers:
+      - name: llm-runtime
+        image: agentlauncher/llm-runtime:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NATS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: agentlauncher-config
+              key: NATS_URL
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: agentlauncher-config
+              key: REDIS_URL
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agentlauncher-secrets
+              key: OPENAI_API_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
