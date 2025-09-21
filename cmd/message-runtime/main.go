@@ -33,7 +33,7 @@ func NewMessageRuntime(eventBus *eventbus.DistributedEventBus, messageStore *sto
 
 func (mr *MessageRuntime) Start() error {
     // Subscribe to message add events
-    err := mr.eventBus.Subscribe("message.add", "message-runtime", func(data []byte) {
+    err := mr.eventBus.Subscribe("message.add", "message-runtime", func(ctx context.Context, data []byte) {
         var event events.MessagesAddEvent
         if err := json.Unmarshal(data, &event); err != nil {
             log.Printf("Failed to unmarshal message add event: %v", err)
@@ -46,7 +46,7 @@ func (mr *MessageRuntime) Start() error {
     }
 
     // Subscribe to message get requests
-    err = mr.eventBus.Subscribe("message.get", "message-runtime", func(data []byte) {
+    err = mr.eventBus.Subscribe("message.get", "message-runtime", func(ctx context.Context, data []byte) {
         var event events.MessageGetRequestEvent
         if err := json.Unmarshal(data, &event); err != nil {
             log.Printf("Failed to unmarshal message get event: %v", err)
@@ -89,7 +89,7 @@ func main() {
     log.Println("Shutting down Message Runtime...")
 
     // Graceful shutdown
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    _, cancel := context.WithTimeout(context.Background(), 30*time.Second)
     defer cancel()
 
     // Close connections

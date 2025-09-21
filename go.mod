@@ -1,13 +1,14 @@
 module github.com/cugtyt/agentlauncher-distributed
 
-go 1.25.1
+go 1.24.0
+
+toolchain go1.24.5
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/nats-io/nats.go v1.45.0
 	github.com/redis/go-redis/v9 v9.14.0
-	github.com/sashabaranov/go-openai v1.41.2
 )
 
 require (
