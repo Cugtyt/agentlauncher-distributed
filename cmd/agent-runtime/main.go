@@ -12,7 +12,7 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
-	"github.com/cugtyt/agentlauncher-distributed/internal/runtime"
+	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
 	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
@@ -53,7 +53,7 @@ func (ar *AgentRuntime) Close() error {
 }
 
 func (ar *AgentRuntime) Start() error {
-	err := ar.eventBus.Subscribe(events.TaskCreateEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+	err := ar.eventBus.Subscribe(events.TaskCreateEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
 		if event, ok := utils.UnmarshalEvent[events.TaskCreateEvent](data, events.TaskCreateEventName); ok {
 			ar.handler.HandleTaskCreate(ctx, event)
 		}
@@ -62,7 +62,7 @@ func (ar *AgentRuntime) Start() error {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.AgentCreateEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+	err = ar.eventBus.Subscribe(events.AgentCreateEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
 		if event, ok := utils.UnmarshalEvent[events.AgentCreateEvent](data, events.AgentCreateEventName); ok {
 			ar.handler.HandleAgentCreate(ctx, event)
 		}
@@ -71,7 +71,7 @@ func (ar *AgentRuntime) Start() error {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.AgentStartEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+	err = ar.eventBus.Subscribe(events.AgentStartEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
 		if event, ok := utils.UnmarshalEvent[events.AgentStartEvent](data, events.AgentStartEventName); ok {
 			ar.handler.HandleAgentStart(ctx, event)
 		}
@@ -80,7 +80,7 @@ func (ar *AgentRuntime) Start() error {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.LLMResponseEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+	err = ar.eventBus.Subscribe(events.LLMResponseEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
 		if event, ok := utils.UnmarshalEvent[events.LLMResponseEvent](data, events.LLMResponseEventName); ok {
 			ar.handler.HandleLLMResponse(ctx, event)
 		}
@@ -89,7 +89,7 @@ func (ar *AgentRuntime) Start() error {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.ToolResultEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+	err = ar.eventBus.Subscribe(events.ToolResultEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
 		if event, ok := utils.UnmarshalEvent[events.ToolsExecResultsEvent](data, events.ToolResultEventName); ok {
 			ar.handler.HandleToolResult(ctx, event)
 		}

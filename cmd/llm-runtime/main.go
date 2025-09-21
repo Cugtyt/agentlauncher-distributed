@@ -2,17 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
+	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
 	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
@@ -23,7 +25,22 @@ type LLMRuntime struct {
 	handler      *handlers.LLMHandler
 }
 
-func NewLLMRuntime(eventBus *eventbus.DistributedEventBus, messageStore *store.MessageStore, llmClient *llminterface.OpenAIClient) *LLMRuntime {
+func NewLLMRuntime() (*LLMRuntime, error) {
+	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
+	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
+	openaiAPIKey := utils.GetEnv("OPENAI_API_KEY", "")
+
+	if openaiAPIKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
+	}
+
+	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	messageStore := store.NewMessageStore(redisURL)
+	llmClient := llminterface.NewOpenAIClient(openaiAPIKey)
 	handler := handlers.NewLLMHandler(eventBus, messageStore, llmClient)
 
 	return &LLMRuntime{
@@ -31,73 +48,50 @@ func NewLLMRuntime(eventBus *eventbus.DistributedEventBus, messageStore *store.M
 		messageStore: messageStore,
 		llmClient:    llmClient,
 		handler:      handler,
-	}
+	}, nil
+}
+
+func (lr *LLMRuntime) Close() error {
+	lr.eventBus.Close()
+	lr.messageStore.Close()
+	return nil
 }
 
 func (lr *LLMRuntime) Start() error {
-	// Subscribe to LLM request events
-	return lr.eventBus.Subscribe("llm.request", "llm-runtime", func(ctx context.Context, data []byte) {
-		var event events.LLMRequestEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal LLM request event: %v", err)
-			return
+	return lr.eventBus.Subscribe(events.LLMRequestEventName, runtimes.LLMRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.LLMRequestEvent](data, events.LLMRequestEventName); ok {
+			lr.handler.HandleLLMRequest(ctx, event)
 		}
-		lr.handler.HandleLLMRequest(context.Background(), event)
 	})
 }
 
 func main() {
-	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
-	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-	openaiAPIKey := getEnv("OPENAI_API_KEY", "")
-
-	if openaiAPIKey == "" {
-		log.Fatal("OPENAI_API_KEY environment variable is required")
-	}
-
-	// Initialize event bus
-	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
+	runtime, err := NewLLMRuntime()
 	if err != nil {
-		log.Fatalf("Failed to initialize event bus: %v", err)
+		log.Fatalf("Failed to initialize LLM runtime: %v", err)
 	}
 
-	// Initialize message store
-	messageStore := store.NewMessageStore(redisURL)
-
-	// Initialize LLM client
-	llmClient := llminterface.NewOpenAIClient(openaiAPIKey)
-
-	// Create LLM runtime
-	runtime := NewLLMRuntime(eventBus, messageStore, llmClient)
-
-	// Start subscriptions
 	if err := runtime.Start(); err != nil {
 		log.Fatalf("Failed to start LLM runtime: %v", err)
 	}
 
 	log.Println("LLM Runtime started successfully")
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutting down LLM Runtime...")
 
-	// Graceful shutdown
-	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Close connections
-	eventBus.Close()
-	messageStore.Close()
+	runtime.Close()
 
-	log.Println("LLM Runtime stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+	select {
+	case <-ctx.Done():
+		log.Println("Shutdown timeout exceeded")
+	default:
+		log.Println("LLM Runtime stopped")
 	}
-	return defaultValue
 }
