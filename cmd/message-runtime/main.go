@@ -17,7 +17,7 @@ import (
 )
 
 type MessageRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
+	eventBus     eventbus.EventBus
 	messageStore *store.MessageStore
 	handler      *handlers.MessageHandler
 }

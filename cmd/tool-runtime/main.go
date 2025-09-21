@@ -17,7 +17,7 @@ import (
 )
 
 type ToolRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
+	eventBus     eventbus.EventBus
 	toolRegistry *tools.Registry
 	handler      *handlers.ToolHandler
 }

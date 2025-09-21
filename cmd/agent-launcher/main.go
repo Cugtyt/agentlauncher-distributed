@@ -22,7 +22,7 @@ const (
 )
 
 type AgentLauncher struct {
-	eventBus *eventbus.DistributedEventBus
+	eventBus eventbus.EventBus
 }
 
 type CreateTaskRequest struct {

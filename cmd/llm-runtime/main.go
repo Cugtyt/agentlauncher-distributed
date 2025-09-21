@@ -19,7 +19,7 @@ import (
 )
 
 type LLMRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
+	eventBus     eventbus.EventBus
 	messageStore *store.MessageStore
 	llmClient    *llminterface.OpenAIClient
 	handler      *handlers.LLMHandler

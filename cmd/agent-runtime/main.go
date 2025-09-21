@@ -17,7 +17,7 @@ import (
 )
 
 type AgentRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
+	eventBus     eventbus.EventBus
 	agentStore   *store.AgentStore
 	messageStore *store.MessageStore
 	handler      *handlers.AgentHandler
