@@ -40,7 +40,7 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 			Timestamp:  time.Now(),
 		}
 
-		if err := th.eventBus.Emit("tool.start", startEvent); err != nil {
+		if err := th.eventBus.Emit(startEvent); err != nil {
 			log.Printf("[%s] Failed to emit tool start event: %v", event.AgentID, err)
 		}
 
@@ -58,7 +58,7 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 			Timestamp:  time.Now(),
 		}
 
-		if err := th.eventBus.Emit("tool.finish", finishEvent); err != nil {
+		if err := th.eventBus.Emit(finishEvent); err != nil {
 			log.Printf("[%s] Failed to emit tool finish event: %v", event.AgentID, err)
 		}
 	}
@@ -70,7 +70,7 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 		Timestamp: time.Now(),
 	}
 
-	if err := th.eventBus.Emit("tool.result", resultsEvent); err != nil {
+	if err := th.eventBus.Emit(resultsEvent); err != nil {
 		log.Printf("[%s] Failed to emit tool results: %v", event.AgentID, err)
 	}
 }
@@ -146,7 +146,7 @@ func (th *ToolHandler) executeCreateAgent(_ context.Context, parentAgentID, tool
 		Timestamp: time.Now(),
 	}
 
-	if err := th.eventBus.Emit("agent.create", createEvent); err != nil {
+	if err := th.eventBus.Emit(createEvent); err != nil {
 		return events.ToolResult{
 			ToolCallID: toolCallID,
 			ToolName:   "create_agent",

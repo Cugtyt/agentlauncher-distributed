@@ -74,7 +74,13 @@ func (deb *DistributedEventBus) ensureStreamForSubject(subject string) error {
 	return nil
 }
 
-func (deb *DistributedEventBus) Emit(subject string, event Event) error {
+func (deb *DistributedEventBus) Emit(event Event) error {
+	subject := event.Subject()
+
+	if err := deb.ensureStreamForSubject(subject); err != nil {
+		return fmt.Errorf("failed to ensure stream for %s: %w", subject, err)
+	}
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)

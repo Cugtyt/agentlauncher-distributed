@@ -12,20 +12,30 @@ type AgentCreateEvent struct {
 	SystemPrompt string                    `json:"system_prompt"`
 }
 
+func (e AgentCreateEvent) Subject() string { return AgentCreateEventName }
+
 type AgentStartEvent struct {
 	AgentID string `json:"agent_id"`
 }
+
+func (e AgentStartEvent) Subject() string { return AgentStartEventName }
 
 type AgentFinishEvent struct {
 	AgentID string `json:"agent_id"`
 	Result  string `json:"result"`
 }
 
+func (e AgentFinishEvent) Subject() string { return AgentFinishEventName }
+
 type AgentErrorEvent struct {
 	AgentID string `json:"agent_id"`
 	Error   string `json:"error"`
 }
 
+func (e AgentErrorEvent) Subject() string { return AgentErrorEventName }
+
 type AgentDeletedEvent struct {
 	AgentID string `json:"agent_id"`
 }
+
+func (e AgentDeletedEvent) Subject() string { return AgentDeletedEventName }

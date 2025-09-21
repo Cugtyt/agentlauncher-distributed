@@ -83,7 +83,7 @@ func (t *CreateAgentTool) Execute(ctx context.Context, args map[string]interface
 		Timestamp: time.Now(),
 	}
 
-	if err := t.eventBus.Emit("message.add", messagesEvent); err != nil {
+	if err := t.eventBus.Emit(messagesEvent); err != nil {
 		return nil, fmt.Errorf("failed to add messages: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func (t *CreateAgentTool) Execute(ctx context.Context, args map[string]interface
 		Timestamp: time.Now(),
 	}
 
-	if err := t.eventBus.Emit("agent.create", createEvent); err != nil {
+	if err := t.eventBus.Emit(createEvent); err != nil {
 		return nil, fmt.Errorf("failed to create sub-agent: %w", err)
 	}
 

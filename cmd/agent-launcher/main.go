@@ -75,7 +75,7 @@ func (al *AgentLauncher) createTaskHandler(w http.ResponseWriter, r *http.Reques
 		Timestamp: time.Now(),
 	}
 
-	if err := al.eventBus.Emit("task.create", taskEvent); err != nil {
+	if err := al.eventBus.Emit(taskEvent); err != nil {
 		log.Printf("Failed to emit task event: %v", err)
 		http.Error(w, "Failed to create task", http.StatusInternalServerError)
 		return
