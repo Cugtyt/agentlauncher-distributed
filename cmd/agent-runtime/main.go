@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
+	"github.com/cugtyt/agentlauncher-distributed/internal/runtime"
 	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
@@ -22,7 +23,18 @@ type AgentRuntime struct {
 	handler      *handlers.AgentHandler
 }
 
-func NewAgentRuntime(eventBus *eventbus.DistributedEventBus, agentStore *store.AgentStore, messageStore *store.MessageStore) *AgentRuntime {
+func NewAgentRuntime() (*AgentRuntime, error) {
+	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
+	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
+
+	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	agentStore := store.NewAgentStore(redisURL)
+	messageStore := store.NewMessageStore(redisURL)
+
 	handler := handlers.NewAgentHandler(eventBus, agentStore, messageStore)
 
 	return &AgentRuntime{
@@ -30,127 +42,89 @@ func NewAgentRuntime(eventBus *eventbus.DistributedEventBus, agentStore *store.A
 		agentStore:   agentStore,
 		messageStore: messageStore,
 		handler:      handler,
-	}
+	}, nil
+}
+
+func (ar *AgentRuntime) Close() error {
+	ar.eventBus.Close()
+	ar.agentStore.Close()
+	ar.messageStore.Close()
+	return nil
 }
 
 func (ar *AgentRuntime) Start() error {
-	// Subscribe to task creation events
-	err := ar.eventBus.Subscribe("task.create", "agent-runtime", func(ctx context.Context, data []byte) {
-		var event events.TaskCreateEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal task create event: %v", err)
-			return
+	err := ar.eventBus.Subscribe(events.TaskCreateEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.TaskCreateEvent](data, events.TaskCreateEventName); ok {
+			ar.handler.HandleTaskCreate(ctx, event)
 		}
-		ar.handler.HandleTaskCreate(ctx, event)
 	})
 	if err != nil {
 		return err
 	}
 
-	// Subscribe to agent creation events
-	err = ar.eventBus.Subscribe("agent.create", "agent-runtime", func(ctx context.Context, data []byte) {
-		var event events.AgentCreateEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal agent create event: %v", err)
-			return
+	err = ar.eventBus.Subscribe(events.AgentCreateEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.AgentCreateEvent](data, events.AgentCreateEventName); ok {
+			ar.handler.HandleAgentCreate(ctx, event)
 		}
-		ar.handler.HandleAgentCreate(ctx, event)
 	})
 	if err != nil {
 		return err
 	}
 
-	// Subscribe to agent start events
-	err = ar.eventBus.Subscribe("agent.start", "agent-runtime", func(ctx context.Context, data []byte) {
-		var event events.AgentStartEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal agent start event: %v", err)
-			return
+	err = ar.eventBus.Subscribe(events.AgentStartEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.AgentStartEvent](data, events.AgentStartEventName); ok {
+			ar.handler.HandleAgentStart(ctx, event)
 		}
-		ar.handler.HandleAgentStart(ctx, event)
 	})
 	if err != nil {
 		return err
 	}
 
-	// Subscribe to LLM response events
-	err = ar.eventBus.Subscribe("llm.response", "agent-runtime", func(ctx context.Context, data []byte) {
-		var event events.LLMResponseEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal LLM response event: %v", err)
-			return
+	err = ar.eventBus.Subscribe(events.LLMResponseEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.LLMResponseEvent](data, events.LLMResponseEventName); ok {
+			ar.handler.HandleLLMResponse(ctx, event)
 		}
-		ar.handler.HandleLLMResponse(ctx, event)
 	})
 	if err != nil {
 		return err
 	}
 
-	// Subscribe to tool execution results
-	err = ar.eventBus.Subscribe("tool.result", "agent-runtime", func(ctx context.Context, data []byte) {
-		var event events.ToolsExecResultsEvent
-		if err := json.Unmarshal(data, &event); err != nil {
-			log.Printf("Failed to unmarshal tool result event: %v", err)
-			return
+	err = ar.eventBus.Subscribe(events.ToolResultEventName, runtime.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
+		if event, ok := utils.UnmarshalEvent[events.ToolsExecResultsEvent](data, events.ToolResultEventName); ok {
+			ar.handler.HandleToolResult(ctx, event)
 		}
-		ar.handler.HandleToolResult(ctx, event)
 	})
 
 	return err
 }
 
 func main() {
-	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
-	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-
-	// Initialize event bus
-	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
+	runtime, err := NewAgentRuntime()
 	if err != nil {
-		log.Fatalf("Failed to initialize event bus: %v", err)
+		log.Fatalf("Failed to initialize agent runtime: %v", err)
 	}
 
-	// Initialize stores
-	agentStore := store.NewAgentStore(redisURL)
-	messageStore := store.NewMessageStore(redisURL)
-
-	// Create agent runtime
-	runtime := NewAgentRuntime(eventBus, agentStore, messageStore)
-
-	// Start subscriptions
 	if err := runtime.Start(); err != nil {
 		log.Fatalf("Failed to start agent runtime: %v", err)
 	}
 
 	log.Println("Agent Runtime started successfully")
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutting down Agent Runtime...")
 
-	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Close connections
-	eventBus.Close()
-	agentStore.Close()
-	messageStore.Close()
+	runtime.Close()
 
-	// Use context to ensure we don't exceed shutdown timeout
 	select {
 	case <-ctx.Done():
 		log.Println("Shutdown timeout exceeded")
 	default:
 		log.Println("Agent Runtime stopped")
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }

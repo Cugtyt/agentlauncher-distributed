@@ -57,7 +57,6 @@ func (ah *AgentHandler) HandleTaskCreate(ctx context.Context, event events.TaskC
 		AgentID:   event.AgentID,
 		Task:      event.Task,
 		Context:   event.Context,
-		Tools:     event.Tools,
 		Metadata:  event.Metadata,
 		Timestamp: time.Now(),
 	}
