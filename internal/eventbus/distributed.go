@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/nats-io/nats.go"
 )
 
@@ -95,16 +96,18 @@ func (deb *DistributedEventBus) Emit(event Event) error {
 	return nil
 }
 
-func (deb *DistributedEventBus) Subscribe(subject, queue string, handler EventHandler) error {
-	if err := deb.ensureStreamForSubject(subject); err != nil {
+func Subscribe[T Event](eventBus *DistributedEventBus, subject, queue string, handler EventHandler[T]) error {
+	if err := eventBus.ensureStreamForSubject(subject); err != nil {
 		return err
 	}
 
 	consumerName := fmt.Sprintf("%s-consumer", queue)
 
-	sub, err := deb.jetStream.QueueSubscribe(subject, queue,
+	sub, err := eventBus.jetStream.QueueSubscribe(subject, queue,
 		func(msg *nats.Msg) {
-			handler(nil, msg.Data)
+			if event, ok := utils.UnmarshalEvent[T](msg.Data, subject); ok {
+				handler(nil, event)
+			}
 			msg.Ack()
 		},
 		nats.Durable(consumerName),
@@ -117,7 +120,7 @@ func (deb *DistributedEventBus) Subscribe(subject, queue string, handler EventHa
 		return fmt.Errorf("failed to subscribe to %s: %w", subject, err)
 	}
 
-	deb.subscriptions = append(deb.subscriptions, sub)
+	eventBus.subscriptions = append(eventBus.subscriptions, sub)
 
 	log.Printf("EventBus: Subscribed to %s with queue %s", subject, queue)
 	return nil

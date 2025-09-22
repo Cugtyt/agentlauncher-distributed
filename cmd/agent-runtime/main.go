@@ -17,7 +17,7 @@ import (
 )
 
 type AgentRuntime struct {
-	eventBus     eventbus.EventBus
+	eventBus     *eventbus.DistributedEventBus
 	agentStore   *store.AgentStore
 	messageStore *store.MessageStore
 	handler      *handlers.AgentHandler
@@ -53,47 +53,42 @@ func (ar *AgentRuntime) Close() error {
 }
 
 func (ar *AgentRuntime) Start() error {
-	err := ar.eventBus.Subscribe(events.TaskCreateEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.TaskCreateEvent](data, events.TaskCreateEventName); ok {
-			ar.handler.HandleTaskCreate(ctx, event)
-		}
-	})
+	err := eventbus.Subscribe(ar.eventBus, events.TaskCreateEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleTaskCreate)
 	if err != nil {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.AgentCreateEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.AgentCreateEvent](data, events.AgentCreateEventName); ok {
-			ar.handler.HandleAgentCreate(ctx, event)
-		}
-	})
+	err = eventbus.Subscribe(ar.eventBus, events.AgentCreateEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleAgentCreate)
 	if err != nil {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.AgentStartEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.AgentStartEvent](data, events.AgentStartEventName); ok {
-			ar.handler.HandleAgentStart(ctx, event)
-		}
-	})
+	err = eventbus.Subscribe(ar.eventBus, events.AgentStartEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleAgentStart)
 	if err != nil {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.LLMResponseEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.LLMResponseEvent](data, events.LLMResponseEventName); ok {
-			ar.handler.HandleLLMResponse(ctx, event)
-		}
-	})
+	err = eventbus.Subscribe(ar.eventBus, events.LLMResponseEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleLLMResponse)
 	if err != nil {
 		return err
 	}
 
-	err = ar.eventBus.Subscribe(events.ToolResultEventName, runtimes.AgentRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.ToolsExecResultsEvent](data, events.ToolResultEventName); ok {
-			ar.handler.HandleToolResult(ctx, event)
-		}
-	})
+	err = eventbus.Subscribe(ar.eventBus, events.ToolExecResultsEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleToolResult)
+	if err != nil {
+		return err
+	}
+
+	err = eventbus.Subscribe(ar.eventBus, events.AgentFinishEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleAgentFinish)
+	if err != nil {
+		return err
+	}
+
+	err = eventbus.Subscribe(ar.eventBus, events.AgentErrorEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleAgentError)
+	if err != nil {
+		return err
+	}
+
+	err = eventbus.Subscribe(ar.eventBus, events.AgentDeletedEventName, runtimes.AgentRuntimeQueueName, ar.handler.HandleAgentDeleted)
 
 	return err
 }

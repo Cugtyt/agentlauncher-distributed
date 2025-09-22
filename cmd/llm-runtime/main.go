@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -19,20 +18,14 @@ import (
 )
 
 type LLMRuntime struct {
-	eventBus     eventbus.EventBus
+	eventBus     *eventbus.DistributedEventBus
 	messageStore *store.MessageStore
-	llmClient    *llminterface.OpenAIClient
 	handler      *handlers.LLMHandler
 }
 
 func NewLLMRuntime() (*LLMRuntime, error) {
 	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
 	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
-	openaiAPIKey := utils.GetEnv("OPENAI_API_KEY", "")
-
-	if openaiAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
-	}
 
 	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
 	if err != nil {
@@ -40,13 +33,21 @@ func NewLLMRuntime() (*LLMRuntime, error) {
 	}
 
 	messageStore := store.NewMessageStore(redisURL)
-	llmClient := llminterface.NewOpenAIClient(openaiAPIKey)
-	handler := handlers.NewLLMHandler(eventBus, messageStore, llmClient)
+
+	llmProcessor := func(messages llminterface.RequestMessageList, tools llminterface.RequestToolList, agentID string, eb eventbus.EventBus) (llminterface.ResponseMessageList, error) {
+		log.Printf("[%s] Processing %d messages with %d tools", agentID, len(messages), len(tools))
+
+		response := llminterface.ResponseMessageList{
+			llminterface.AssistantMessage{Content: "Hello from LLM processor"},
+		}
+		return response, nil
+	}
+
+	handler := handlers.NewLLMHandler(eventBus, llmProcessor)
 
 	return &LLMRuntime{
 		eventBus:     eventBus,
 		messageStore: messageStore,
-		llmClient:    llmClient,
 		handler:      handler,
 	}, nil
 }
@@ -58,11 +59,11 @@ func (lr *LLMRuntime) Close() error {
 }
 
 func (lr *LLMRuntime) Start() error {
-	return lr.eventBus.Subscribe(events.LLMRequestEventName, runtimes.LLMRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.LLMRequestEvent](data, events.LLMRequestEventName); ok {
-			lr.handler.HandleLLMRequest(ctx, event)
-		}
-	})
+	if err := eventbus.Subscribe(lr.eventBus, events.LLMRequestEventName, runtimes.LLMRuntimeQueueName, lr.handler.HandleLLMRequest); err != nil {
+		return err
+	}
+
+	return eventbus.Subscribe(lr.eventBus, events.LLMErrorEventName, runtimes.LLMRuntimeQueueName, lr.handler.HandleLLMRuntimeError)
 }
 
 func main() {

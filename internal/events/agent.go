@@ -34,6 +34,13 @@ type AgentErrorEvent struct {
 
 func (e AgentErrorEvent) Subject() string { return AgentErrorEventName }
 
+type AgentRuntimeErrorEvent struct {
+	AgentID string `json:"agent_id"`
+	Error   string `json:"error"`
+}
+
+func (e AgentRuntimeErrorEvent) Subject() string { return AgentRuntimeErrorEventName }
+
 type AgentDeletedEvent struct {
 	AgentID string `json:"agent_id"`
 }

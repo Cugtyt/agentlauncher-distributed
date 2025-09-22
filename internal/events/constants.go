@@ -1,11 +1,12 @@
 package events
 
 const (
-	AgentCreateEventName  = "agent.create"
-	AgentStartEventName   = "agent.start"
-	AgentFinishEventName  = "agent.finish"
-	AgentErrorEventName   = "agent.error"
-	AgentDeletedEventName = "agent.deleted"
+	AgentCreateEventName       = "agent.create"
+	AgentStartEventName        = "agent.start"
+	AgentFinishEventName       = "agent.finish"
+	AgentErrorEventName        = "agent.error"
+	AgentRuntimeErrorEventName = "agent.runtime.error"
+	AgentDeletedEventName      = "agent.deleted"
 
 	TaskCreateEventName = "task.create"
 	TaskFinishEventName = "task.finish"
