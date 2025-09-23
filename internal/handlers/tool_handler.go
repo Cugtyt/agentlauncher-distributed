@@ -2,27 +2,65 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
-	"github.com/cugtyt/agentlauncher-distributed/internal/tools"
-	"github.com/google/uuid"
+	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 )
 
-type ToolHandler struct {
-	eventBus     *eventbus.DistributedEventBus
-	toolRegistry *tools.Registry
+type Tool struct {
+	llminterface.ToolSchema
+	Function func(ctx context.Context, args map[string]interface{}) (string, error)
 }
 
-func NewToolHandler(eb *eventbus.DistributedEventBus, tr *tools.Registry) *ToolHandler {
+type ToolHandler struct {
+	eventBus      *eventbus.DistributedEventBus
+	tools         map[string]Tool
+	agentChannels map[string]chan string
+}
+
+func NewToolHandler(eb *eventbus.DistributedEventBus) *ToolHandler {
 	return &ToolHandler{
-		eventBus:     eb,
-		toolRegistry: tr,
+		eventBus:      eb,
+		tools:         make(map[string]Tool),
+		agentChannels: make(map[string]chan string),
 	}
+}
+
+func (th *ToolHandler) Register(tool Tool) error {
+	if _, exists := th.tools[tool.Name]; exists {
+		return fmt.Errorf("tool %s already registered", tool.Name)
+	}
+
+	th.tools[tool.Name] = tool
+	return nil
+}
+
+func (th *ToolHandler) GetTool(name string) (Tool, error) {
+	tool, exists := th.tools[name]
+	if !exists {
+		return Tool{}, fmt.Errorf("tool %s not found", name)
+	}
+
+	return tool, nil
+}
+
+func (th *ToolHandler) GetAllToolNames() []string {
+	names := make([]string, 0, len(th.tools))
+	for name := range th.tools {
+		names = append(names, name)
+	}
+	return names
+}
+
+func (th *ToolHandler) GetAllToolSchemas() []llminterface.ToolSchema {
+	schemas := make([]llminterface.ToolSchema, 0, len(th.tools))
+	for _, tool := range th.tools {
+		schemas = append(schemas, tool.ToolSchema)
+	}
+	return schemas
 }
 
 func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.ToolsExecRequestEvent) {
@@ -31,31 +69,25 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 	results := make([]events.ToolResult, 0, len(event.ToolCalls))
 
 	for _, toolCall := range event.ToolCalls {
-		// Emit tool start event
 		startEvent := events.ToolExecStartEvent{
 			AgentID:    event.AgentID,
-			ToolCallID: toolCall.ID,
-			ToolName:   toolCall.Function.Name,
-			Arguments:  toolCall.Function.Arguments,
-			Timestamp:  time.Now(),
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
+			Arguments:  toolCall.Arguments,
 		}
 
 		if err := th.eventBus.Emit(startEvent); err != nil {
 			log.Printf("[%s] Failed to emit tool start event: %v", event.AgentID, err)
 		}
 
-		// Execute the tool
 		result := th.executeTool(ctx, event.AgentID, toolCall)
 		results = append(results, result)
 
-		// Emit tool finish event
 		finishEvent := events.ToolExecFinishEvent{
 			AgentID:    event.AgentID,
-			ToolCallID: toolCall.ID,
-			ToolName:   toolCall.Function.Name,
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
 			Result:     result.Result,
-			Error:      result.Error,
-			Timestamp:  time.Now(),
 		}
 
 		if err := th.eventBus.Emit(finishEvent); err != nil {
@@ -63,11 +95,9 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 		}
 	}
 
-	// Send all results back
 	resultsEvent := events.ToolsExecResultsEvent{
-		AgentID:   event.AgentID,
-		Results:   results,
-		Timestamp: time.Now(),
+		AgentID:     event.AgentID,
+		ToolResults: results,
 	}
 
 	if err := th.eventBus.Emit(resultsEvent); err != nil {
@@ -76,93 +106,78 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 }
 
 func (th *ToolHandler) executeTool(ctx context.Context, agentID string, toolCall events.ToolCall) events.ToolResult {
-	log.Printf("[%s] Executing tool: %s", agentID, toolCall.Function.Name)
+	log.Printf("[%s] Executing tool: %s", agentID, toolCall.ToolName)
 
-	// Parse arguments
 	var args map[string]interface{}
-	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-		return events.ToolResult{
-			ToolCallID: toolCall.ID,
-			ToolName:   toolCall.Function.Name,
-			Error:      fmt.Sprintf("Failed to parse arguments: %v", err),
-		}
+	if toolCall.Arguments != nil {
+		args = toolCall.Arguments
+	} else {
+		args = make(map[string]interface{})
 	}
 
-	// Special handling for create_agent tool
-	if toolCall.Function.Name == "create_agent" {
-		return th.executeCreateAgent(ctx, agentID, toolCall.ID, args)
-	}
-
-	// Get tool from registry
-	tool, err := th.toolRegistry.Get(toolCall.Function.Name)
+	tool, err := th.GetTool(toolCall.ToolName)
 	if err != nil {
-		return events.ToolResult{
-			ToolCallID: toolCall.ID,
-			ToolName:   toolCall.Function.Name,
+		errorEvent := events.ToolExecErrorEvent{
+			AgentID:    agentID,
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
 			Error:      fmt.Sprintf("Tool not found: %v", err),
 		}
+		th.eventBus.Emit(errorEvent)
+
+		return events.ToolResult{
+			AgentID:    agentID,
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
+			Result:     fmt.Sprintf("Error: Tool not found: %v", err),
+		}
 	}
 
-	// Execute the tool
-	result, err := tool.Execute(ctx, args)
+	result, err := tool.Function(ctx, args)
 	if err != nil {
-		return events.ToolResult{
-			ToolCallID: toolCall.ID,
-			ToolName:   toolCall.Function.Name,
+		errorEvent := events.ToolExecErrorEvent{
+			AgentID:    agentID,
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
 			Error:      fmt.Sprintf("Tool execution failed: %v", err),
+		}
+		th.eventBus.Emit(errorEvent)
+
+		return events.ToolResult{
+			AgentID:    agentID,
+			ToolCallID: toolCall.ToolCallID,
+			ToolName:   toolCall.ToolName,
+			Result:     fmt.Sprintf("Error: Tool execution failed: %v", err),
 		}
 	}
 
 	return events.ToolResult{
-		ToolCallID: toolCall.ID,
-		ToolName:   toolCall.Function.Name,
+		AgentID:    agentID,
+		ToolCallID: toolCall.ToolCallID,
+		ToolName:   toolCall.ToolName,
 		Result:     result,
 	}
 }
 
-func (th *ToolHandler) executeCreateAgent(_ context.Context, parentAgentID, toolCallID string, args map[string]interface{}) events.ToolResult {
-	task, ok := args["task"].(string)
-	if !ok {
-		return events.ToolResult{
-			ToolCallID: toolCallID,
-			ToolName:   "create_agent",
-			Error:      "Task argument is required",
+func (th *ToolHandler) CreateAgentChannel(agentID string) chan string {
+	resultChan := make(chan string, 1)
+	th.agentChannels[agentID] = resultChan
+	return resultChan
+}
+
+func (th *ToolHandler) RemoveAgentChannel(agentID string) {
+	if ch, exists := th.agentChannels[agentID]; exists {
+		close(ch)
+		delete(th.agentChannels, agentID)
+	}
+}
+
+func (th *ToolHandler) HandleAgentFinish(agentID string, result string) {
+	if ch, exists := th.agentChannels[agentID]; exists {
+		select {
+		case ch <- result:
+		default:
 		}
-	}
-
-	context, _ := args["context"].(string)
-
-	// Generate sub-agent ID
-	subAgentID := fmt.Sprintf("%s_%s", parentAgentID, uuid.New().String()[:8])
-
-	log.Printf("[%s] Creating sub-agent: %s", parentAgentID, subAgentID)
-
-	// Create the sub-agent
-	createEvent := events.AgentCreateEvent{
-		AgentID:   subAgentID,
-		ParentID:  parentAgentID,
-		Task:      task,
-		Context:   context,
-		Timestamp: time.Now(),
-	}
-
-	if err := th.eventBus.Emit(createEvent); err != nil {
-		return events.ToolResult{
-			ToolCallID: toolCallID,
-			ToolName:   "create_agent",
-			Error:      fmt.Sprintf("Failed to create sub-agent: %v", err),
-		}
-	}
-
-	// Wait for sub-agent to complete (simplified - in production use proper async handling)
-	// For now, return immediately with agent ID
-	return events.ToolResult{
-		ToolCallID: toolCallID,
-		ToolName:   "create_agent",
-		Result: map[string]string{
-			"agent_id": subAgentID,
-			"status":   "created",
-			"message":  fmt.Sprintf("Sub-agent %s created to handle task: %s", subAgentID, task),
-		},
+		th.RemoveAgentChannel(agentID)
 	}
 }

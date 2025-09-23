@@ -12,14 +12,13 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
+	"github.com/cugtyt/agentlauncher-distributed/internal/handlers/tools"
 	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
-	"github.com/cugtyt/agentlauncher-distributed/internal/tools"
 )
 
 type ToolRuntime struct {
-	eventBus     eventbus.EventBus
-	toolRegistry *tools.Registry
-	handler      *handlers.ToolHandler
+	eventBus *eventbus.DistributedEventBus
+	handler  *handlers.ToolHandler
 }
 
 func NewToolRuntime() (*ToolRuntime, error) {
@@ -30,17 +29,14 @@ func NewToolRuntime() (*ToolRuntime, error) {
 		return nil, err
 	}
 
-	toolRegistry := tools.NewRegistry()
-	toolRegistry.RegisterTool(tools.NewSearchTool())
-	toolRegistry.RegisterTool(tools.NewWeatherTool())
-	toolRegistry.RegisterTool(tools.NewCreateAgentTool(eventBus))
+	handler := handlers.NewToolHandler(eventBus)
 
-	handler := handlers.NewToolHandler(eventBus, toolRegistry)
+	createAgentTool := tools.NewCreateAgentTool(eventBus, handler)
+	handler.Register(createAgentTool)
 
 	return &ToolRuntime{
-		eventBus:     eventBus,
-		toolRegistry: toolRegistry,
-		handler:      handler,
+		eventBus: eventBus,
+		handler:  handler,
 	}, nil
 }
 
@@ -50,11 +46,7 @@ func (tr *ToolRuntime) Close() error {
 }
 
 func (tr *ToolRuntime) Start() error {
-	return tr.eventBus.Subscribe(events.ToolExecuteEventName, runtimes.ToolRuntimeQueueName, func(ctx context.Context, data []byte) {
-		if event, ok := utils.UnmarshalEvent[events.ToolsExecRequestEvent](data, events.ToolExecuteEventName); ok {
-			tr.handler.HandleToolExecution(ctx, event)
-		}
-	})
+	return eventbus.Subscribe(tr.eventBus, events.ToolExecRequestEventName, runtimes.ToolRuntimeQueueName, tr.handler.HandleToolExecution)
 }
 
 func main() {
