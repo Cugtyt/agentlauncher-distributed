@@ -11,16 +11,14 @@ import (
 )
 
 type AgentHandler struct {
-	eventBus     *eventbus.DistributedEventBus
-	agentStore   *store.AgentStore
-	messageStore *store.MessageStore
+	eventBus   *eventbus.DistributedEventBus
+	agentStore *store.AgentStore
 }
 
-func NewAgentHandler(eb *eventbus.DistributedEventBus, as *store.AgentStore, ms *store.MessageStore) *AgentHandler {
+func NewAgentHandler(eb *eventbus.DistributedEventBus, as *store.AgentStore) *AgentHandler {
 	return &AgentHandler{
-		eventBus:     eb,
-		agentStore:   as,
-		messageStore: ms,
+		eventBus:   eb,
+		agentStore: as,
 	}
 }
 
@@ -54,9 +52,10 @@ func (ah *AgentHandler) HandleAgentCreate(ctx context.Context, event events.Agen
 		Task:         event.Task,
 		SystemPrompt: event.SystemPrompt,
 		ToolSchemas:  event.ToolSchemas,
+		Messages:     event.Conversation,
 	}
 
-	if err := ah.agentStore.CreateAgent(agentData, event.Conversation); err != nil {
+	if err := ah.agentStore.CreateAgent(agentData); err != nil {
 		log.Printf("[%s] Failed to create agent: %v", event.AgentID, err)
 
 		errorEvent := events.AgentErrorEvent{
@@ -78,7 +77,7 @@ func (ah *AgentHandler) HandleAgentCreate(ctx context.Context, event events.Agen
 }
 
 func (ah *AgentHandler) HandleAgentStart(ctx context.Context, event events.AgentStartEvent) {
-	agent, conversation, err := ah.agentStore.GetAgent(event.AgentID)
+	agent, err := ah.agentStore.GetAgent(event.AgentID)
 	if err != nil {
 		log.Printf("[%s] Failed to get agent: %v", event.AgentID, err)
 
@@ -91,7 +90,7 @@ func (ah *AgentHandler) HandleAgentStart(ctx context.Context, event events.Agent
 	}
 
 	taskMsg := llminterface.UserMessage{Content: agent.Task}
-	updatedConversation := append(conversation, taskMsg)
+	updatedConversation := append(agent.Messages, taskMsg)
 
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
@@ -185,7 +184,7 @@ func (ah *AgentHandler) HandleLLMResponse(ctx context.Context, event events.LLMR
 }
 
 func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.ToolsExecResultsEvent) {
-	agent, conversation, err := ah.agentStore.GetAgent(event.AgentID)
+	agent, err := ah.agentStore.GetAgent(event.AgentID)
 	if err != nil {
 		log.Printf("[%s] Failed to get agent: %v", event.AgentID, err)
 
@@ -206,7 +205,7 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 		toolMessages = append(toolMessages, msg)
 	}
 
-	updatedConversation := append(conversation, toolMessages...)
+	updatedConversation := append(agent.Messages, toolMessages...)
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
@@ -256,7 +255,5 @@ func (ah *AgentHandler) HandleAgentError(ctx context.Context, event events.Agent
 
 func (ah *AgentHandler) HandleAgentDeleted(ctx context.Context, event events.AgentDeletedEvent) {
 	log.Printf("[%s] Agent deleted", event.AgentID)
-
 	ah.agentStore.Delete(event.AgentID)
-	ah.messageStore.DeleteMessages(event.AgentID)
 }

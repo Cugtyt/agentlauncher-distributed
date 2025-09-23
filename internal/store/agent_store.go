@@ -13,21 +13,25 @@ type AgentData struct {
 	Task         string                    `json:"task"`
 	SystemPrompt string                    `json:"system_prompt"`
 	ToolSchemas  []llminterface.ToolSchema `json:"tool_schemas"`
-}
-
-type AgentConversation struct {
-	AgentID  string                   `json:"agent_id"`
-	Messages llminterface.MessageList `json:"messages"`
+	Messages     llminterface.MessageList  `json:"messages"`
 }
 
 type AgentStore struct {
 	redis *RedisClient
 }
 
-func NewAgentStore(redisURL string) *AgentStore {
-	return &AgentStore{
-		redis: NewRedisClient(redisURL),
+func (as *AgentStore) agentKey(agentID string) string {
+	return fmt.Sprintf("agent:%s", agentID)
+}
+
+func NewAgentStore(redisURL string) (*AgentStore, error) {
+	redisClient, err := NewRedisClient(redisURL)
+	if err != nil {
+		return nil, err
 	}
+	return &AgentStore{
+		redis: redisClient,
+	}, nil
 }
 
 func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
@@ -36,8 +40,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 		return fmt.Errorf("failed to marshal agent data: %w", err)
 	}
 
-	agentKey := fmt.Sprintf("%s:data", agentID)
-	if err := as.redis.Set(agentKey, data, 1*time.Hour); err != nil {
+	if err := as.redis.Set(as.agentKey(agentID), data, 1*time.Hour); err != nil {
 		return fmt.Errorf("failed to store agent data: %w", err)
 	}
 
@@ -45,8 +48,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 }
 
 func (as *AgentStore) GetAgentData(agentID string) (*AgentData, error) {
-	agentKey := fmt.Sprintf("%s:data", agentID)
-	data, err := as.redis.Get(agentKey)
+	data, err := as.redis.Get(as.agentKey(agentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get agent data: %w", err)
 	}
@@ -60,42 +62,34 @@ func (as *AgentStore) GetAgentData(agentID string) (*AgentData, error) {
 }
 
 func (as *AgentStore) SetConversation(agentID string, messages llminterface.MessageList) error {
-	conversation := &AgentConversation{
-		AgentID:  agentID,
-		Messages: messages,
-	}
-
-	data, err := json.Marshal(conversation)
+	messagesData, err := json.Marshal(messages)
 	if err != nil {
-		return fmt.Errorf("failed to marshal conversation: %w", err)
+		return fmt.Errorf("failed to marshal messages: %w", err)
 	}
 
-	conversationKey := fmt.Sprintf("%s:conv", agentID)
-	if err := as.redis.Set(conversationKey, data, 1*time.Hour); err != nil {
-		return fmt.Errorf("failed to store conversation: %w", err)
+	if err := as.redis.HSet(as.agentKey(agentID), "messages", string(messagesData)); err != nil {
+		return fmt.Errorf("failed to update conversation: %w", err)
 	}
 
 	return nil
 }
 
 func (as *AgentStore) GetConversation(agentID string) (llminterface.MessageList, error) {
-	conversationKey := fmt.Sprintf("%s:conv", agentID)
-	data, err := as.redis.Get(conversationKey)
+	messagesStr, err := as.redis.HGet(as.agentKey(agentID), "messages")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation: %w", err)
 	}
 
-	var conversation AgentConversation
-	if err := json.Unmarshal([]byte(data), &conversation); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal conversation: %w", err)
+	var messages llminterface.MessageList
+	if err := json.Unmarshal([]byte(messagesStr), &messages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal messages: %w", err)
 	}
 
-	return conversation.Messages, nil
+	return messages, nil
 }
 
 func (as *AgentStore) Exists(agentID string) (bool, error) {
-	agentKey := fmt.Sprintf("%s:data", agentID)
-	exists, err := as.redis.Exists(agentKey)
+	exists, err := as.redis.Exists(as.agentKey(agentID))
 	if err != nil {
 		return false, fmt.Errorf("failed to check if agent exists: %w", err)
 	}
@@ -103,44 +97,18 @@ func (as *AgentStore) Exists(agentID string) (bool, error) {
 }
 
 func (as *AgentStore) Delete(agentID string) error {
-	agentKey := fmt.Sprintf("%s:data", agentID)
-	if err := as.redis.Del(agentKey); err != nil {
-		return fmt.Errorf("failed to delete agent data: %w", err)
+	if err := as.redis.Del(as.agentKey(agentID)); err != nil {
+		return fmt.Errorf("failed to delete agent: %w", err)
 	}
-
-	conversationKey := fmt.Sprintf("%s:conv", agentID)
-	if err := as.redis.Del(conversationKey); err != nil {
-		return fmt.Errorf("failed to delete conversation: %w", err)
-	}
-
 	return nil
 }
 
-func (as *AgentStore) CreateAgent(agentData *AgentData, conversation llminterface.MessageList) error {
-	if err := as.SetAgentData(agentData.AgentID, agentData); err != nil {
-		return err
-	}
-
-	if err := as.SetConversation(agentData.AgentID, conversation); err != nil {
-		as.Delete(agentData.AgentID)
-		return err
-	}
-
-	return nil
+func (as *AgentStore) CreateAgent(agentData *AgentData) error {
+	return as.SetAgentData(agentData.AgentID, agentData)
 }
 
-func (as *AgentStore) GetAgent(agentID string) (*AgentData, llminterface.MessageList, error) {
-	agent, err := as.GetAgentData(agentID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	conversation, err := as.GetConversation(agentID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return agent, conversation, nil
+func (as *AgentStore) GetAgent(agentID string) (*AgentData, error) {
+	return as.GetAgentData(agentID)
 }
 
 func (as *AgentStore) Close() error {
