@@ -3,7 +3,6 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 )
@@ -40,7 +39,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 		return fmt.Errorf("failed to marshal agent data: %w", err)
 	}
 
-	if err := as.redis.Set(as.agentKey(agentID), data, 1*time.Hour); err != nil {
+	if err := as.redis.HSet(as.agentKey(agentID), "data", string(data)); err != nil {
 		return fmt.Errorf("failed to store agent data: %w", err)
 	}
 
@@ -48,7 +47,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 }
 
 func (as *AgentStore) GetAgentData(agentID string) (*AgentData, error) {
-	data, err := as.redis.Get(as.agentKey(agentID))
+	data, err := as.redis.HGet(as.agentKey(agentID), "data")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get agent data: %w", err)
 	}

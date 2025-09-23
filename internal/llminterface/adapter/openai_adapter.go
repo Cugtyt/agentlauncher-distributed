@@ -11,8 +11,8 @@ func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[str
 	var currentToolCalls []map[string]interface{}
 
 	for i, msg := range messages {
-		switch m := msg.(type) {
-		case llminterface.UserMessage:
+		switch msg.Type {
+		case llminterface.MessageTypeUser:
 			if len(currentToolCalls) > 0 {
 				openaiMessages = append(openaiMessages, map[string]interface{}{
 					"role":       "assistant",
@@ -22,10 +22,10 @@ func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[str
 			}
 			openaiMessages = append(openaiMessages, map[string]interface{}{
 				"role":    "user",
-				"content": m.Content,
+				"content": msg.Content,
 			})
 
-		case llminterface.AssistantMessage:
+		case llminterface.MessageTypeAssistant:
 			if len(currentToolCalls) > 0 {
 				openaiMessages = append(openaiMessages, map[string]interface{}{
 					"role":       "assistant",
@@ -36,17 +36,17 @@ func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[str
 
 			hasToolCalls := false
 			if i+1 < len(messages) {
-				_, hasToolCalls = messages[i+1].(llminterface.ToolCallMessage)
+				hasToolCalls = messages[i+1].Type == llminterface.MessageTypeToolCall
 			}
 
 			if !hasToolCalls {
 				openaiMessages = append(openaiMessages, map[string]interface{}{
 					"role":    "assistant",
-					"content": m.Content,
+					"content": msg.Content,
 				})
 			}
 
-		case llminterface.SystemMessage:
+		case llminterface.MessageTypeSystem:
 			if len(currentToolCalls) > 0 {
 				openaiMessages = append(openaiMessages, map[string]interface{}{
 					"role":       "assistant",
@@ -56,21 +56,21 @@ func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[str
 			}
 			openaiMessages = append(openaiMessages, map[string]interface{}{
 				"role":    "system",
-				"content": m.Content,
+				"content": msg.Content,
 			})
 
-		case llminterface.ToolCallMessage:
-			argsBytes, _ := json.Marshal(m.Arguments)
+		case llminterface.MessageTypeToolCall:
+			argsBytes, _ := json.Marshal(msg.Arguments)
 			currentToolCalls = append(currentToolCalls, map[string]interface{}{
-				"id":   m.ToolCallID,
+				"id":   msg.ToolCallID,
 				"type": "function",
 				"function": map[string]interface{}{
-					"name":      m.ToolName,
+					"name":      msg.ToolName,
 					"arguments": string(argsBytes),
 				},
 			})
 
-		case llminterface.ToolResultMessage:
+		case llminterface.MessageTypeToolResult:
 			if len(currentToolCalls) > 0 {
 				openaiMessages = append(openaiMessages, map[string]interface{}{
 					"role":       "assistant",
@@ -80,8 +80,8 @@ func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[str
 			}
 			openaiMessages = append(openaiMessages, map[string]interface{}{
 				"role":         "tool",
-				"content":      m.Result,
-				"tool_call_id": m.ToolCallID,
+				"content":      msg.Result,
+				"tool_call_id": msg.ToolCallID,
 			})
 		}
 	}
@@ -137,7 +137,7 @@ func ConvertOpenAIResponseToMessages(content string, toolCalls []map[string]inte
 	response := llminterface.ResponseMessageList{}
 
 	if content != "" {
-		response = append(response, llminterface.AssistantMessage{Content: content})
+		response = append(response, llminterface.NewAssistantMessage(content))
 	}
 
 	for _, toolCall := range toolCalls {
@@ -147,11 +147,11 @@ func ConvertOpenAIResponseToMessages(content string, toolCalls []map[string]inte
 				json.Unmarshal([]byte(argsStr), &args)
 			}
 
-			response = append(response, llminterface.ToolCallMessage{
-				ToolCallID: toolCall["id"].(string),
-				ToolName:   function["name"].(string),
-				Arguments:  args,
-			})
+			response = append(response, llminterface.NewToolCallMessage(
+				toolCall["id"].(string),
+				function["name"].(string),
+				args,
+			))
 		}
 	}
 

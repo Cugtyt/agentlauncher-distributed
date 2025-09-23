@@ -36,7 +36,7 @@ func NewLLMRuntime() (*LLMRuntime, error) {
 		log.Printf("[%s] Processing %d messages with %d tools", agentID, len(messages), len(tools))
 
 		response := llminterface.ResponseMessageList{
-			llminterface.AssistantMessage{Content: "Hello from LLM processor"},
+			llminterface.NewAssistantMessage("Hello from LLM processor"),
 		}
 		return response, nil
 	}

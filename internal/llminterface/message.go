@@ -1,48 +1,44 @@
 package llminterface
 
-type Message interface {
-	message()
-	IsResponse() bool
+const (
+	MessageTypeUser       = "user"
+	MessageTypeSystem     = "system"
+	MessageTypeAssistant  = "assistant"
+	MessageTypeToolCall   = "tool_call"
+	MessageTypeToolResult = "tool_result"
+)
+
+type Message struct {
+	Type       string         `json:"type"`
+	Content    string         `json:"content,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+	ToolName   string         `json:"tool_name,omitempty"`
+	Arguments  map[string]any `json:"arguments,omitempty"`
+	Result     string         `json:"result,omitempty"`
 }
 
-type baseMessage struct{}
-
-func (baseMessage) message()         {}
-func (baseMessage) IsResponse() bool { return false }
-
-type UserMessage struct {
-	baseMessage
-	Content string `json:"content"`
-}
-
-type SystemMessage struct {
-	baseMessage
-	Content string `json:"content"`
-}
-
-type AssistantMessage struct {
-	baseMessage
-	Content string `json:"content"`
-}
-
-func (m AssistantMessage) IsResponse() bool { return true }
-
-type ToolCallMessage struct {
-	baseMessage
-	ToolCallID string         `json:"tool_call_id"`
-	ToolName   string         `json:"tool_name"`
-	Arguments  map[string]any `json:"arguments"`
-}
-
-func (m ToolCallMessage) IsResponse() bool { return true }
-
-type ToolResultMessage struct {
-	baseMessage
-	ToolCallID string `json:"tool_call_id"`
-	ToolName   string `json:"tool_name"`
-	Result     string `json:"result"`
-}
+func (m Message) GetType() string { return m.Type }
 
 type RequestMessageList []Message
 type ResponseMessageList []Message
 type MessageList []Message
+
+func NewUserMessage(content string) Message {
+	return Message{Type: MessageTypeUser, Content: content}
+}
+
+func NewSystemMessage(content string) Message {
+	return Message{Type: MessageTypeSystem, Content: content}
+}
+
+func NewAssistantMessage(content string) Message {
+	return Message{Type: MessageTypeAssistant, Content: content}
+}
+
+func NewToolCallMessage(toolCallID, toolName string, arguments map[string]any) Message {
+	return Message{Type: MessageTypeToolCall, ToolCallID: toolCallID, ToolName: toolName, Arguments: arguments}
+}
+
+func NewToolResultMessage(toolCallID, toolName, result string) Message {
+	return Message{Type: MessageTypeToolResult, ToolCallID: toolCallID, ToolName: toolName, Result: result}
+}

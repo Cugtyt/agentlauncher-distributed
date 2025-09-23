@@ -95,7 +95,7 @@ func (ah *AgentHandler) HandleAgentStart(ctx context.Context, event events.Agent
 		return
 	}
 
-	taskMsg := llminterface.UserMessage{Content: agent.Task}
+	taskMsg := llminterface.NewUserMessage(agent.Task)
 	updatedConversation := append(agent.Messages, taskMsg)
 
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
@@ -104,7 +104,7 @@ func (ah *AgentHandler) HandleAgentStart(ctx context.Context, event events.Agent
 
 	messages := llminterface.MessageList{}
 	if agent.SystemPrompt != "" {
-		systemMsg := llminterface.SystemMessage{Content: agent.SystemPrompt}
+		systemMsg := llminterface.NewSystemMessage(agent.SystemPrompt)
 		messages = append(messages, systemMsg)
 	}
 	messages = append(messages, updatedConversation...)
@@ -141,11 +141,11 @@ func (ah *AgentHandler) HandleLLMResponse(ctx context.Context, event events.LLMR
 	}
 
 	updatedConversation := append(conversation, event.Response...)
-	
+
 	if ah.conversationProcessor != nil {
 		updatedConversation = ah.conversationProcessor(updatedConversation)
 	}
-	
+
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
@@ -154,15 +154,15 @@ func (ah *AgentHandler) HandleLLMResponse(ctx context.Context, event events.LLMR
 	var finalResponse string
 
 	for _, msg := range event.Response {
-		switch m := msg.(type) {
-		case llminterface.AssistantMessage:
-			finalResponse = m.Content
-		case llminterface.ToolCallMessage:
+		switch msg.Type {
+		case llminterface.MessageTypeAssistant:
+			finalResponse = msg.Content
+		case llminterface.MessageTypeToolCall:
 			toolCall := events.ToolCall{
 				AgentID:    event.AgentID,
-				ToolName:   m.ToolName,
-				ToolCallID: m.ToolCallID,
-				Arguments:  m.Arguments,
+				ToolName:   msg.ToolName,
+				ToolCallID: msg.ToolCallID,
+				Arguments:  msg.Arguments,
 			}
 			toolCalls = append(toolCalls, toolCall)
 		}
@@ -209,26 +209,23 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 
 	toolMessages := make(llminterface.MessageList, 0, len(event.ToolResults))
 	for _, result := range event.ToolResults {
-		msg := llminterface.ToolResultMessage{
-			ToolCallID: result.ToolCallID,
-			Result:     result.Result,
-		}
+		msg := llminterface.NewToolResultMessage(result.ToolCallID, result.ToolName, result.Result)
 		toolMessages = append(toolMessages, msg)
 	}
 
 	updatedConversation := append(agent.Messages, toolMessages...)
-	
+
 	if ah.conversationProcessor != nil {
 		updatedConversation = ah.conversationProcessor(updatedConversation)
 	}
-	
+
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
 
 	messages := llminterface.MessageList{}
 	if agent.SystemPrompt != "" {
-		systemMsg := llminterface.SystemMessage{Content: agent.SystemPrompt}
+		systemMsg := llminterface.NewSystemMessage(agent.SystemPrompt)
 		messages = append(messages, systemMsg)
 	}
 	messages = append(messages, updatedConversation...)

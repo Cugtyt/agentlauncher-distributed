@@ -8,27 +8,40 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Building Docker images for agentlauncher-distributed...${NC}"
+echo -e "${YELLOW}Setting up port forwarding for agentlauncher services...${NC}"
 
-# Docker registry
-REGISTRY="agentlauncher"
+# Check if services are running
+echo -e "${YELLOW}Checking service status...${NC}"
+kubectl get pods -n agentlauncher
 
-# Build services
-services=("agent-launcher" "agent-runtime" "llm-runtime" "tool-runtime" "message-runtime")
+# Wait for agent-launcher to be ready
+echo -e "${YELLOW}Waiting for agent-launcher to be ready...${NC}"
+kubectl wait --for=condition=ready pod -l app=agent-launcher -n agentlauncher --timeout=60s
 
-for service in "${services[@]}"; do
-    echo -e "${YELLOW}Building $service...${NC}"
-    docker build -f deployments/docker/Dockerfile.$service -t $REGISTRY/$service:latest .
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ $service built successfully${NC}"
-    else
-        echo -e "${RED}✗ Failed to build $service${NC}"
-        exit 1
-    fi
-done
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ agent-launcher is ready${NC}"
+else
+    echo -e "${RED}✗ agent-launcher failed to become ready${NC}"
+    exit 1
+fi
 
-echo -e "${GREEN}All images built successfully!${NC}"
+# Start port forwarding
+echo -e "${YELLOW}Starting port forwarding...${NC}"
+echo -e "${GREEN}Agent Launcher API will be available at: http://localhost:8080${NC}"
+echo -e "${GREEN}Tool Runtime API will be available at: http://localhost:8082${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop port forwarding${NC}"
 
-# List built images
-echo -e "\n${YELLOW}Built images:${NC}"
-docker images | grep $REGISTRY
+# Port forward both services
+kubectl port-forward -n agentlauncher service/agent-launcher 8080:8080 &
+kubectl port-forward -n agentlauncher service/tool-runtime 8082:8082 &
+
+# Keep the script running and handle cleanup
+trap 'echo -e "\n${YELLOW}Stopping port forwarding...${NC}"; kill $(jobs -p); exit 0' INT
+
+echo -e "${GREEN}Port forwarding is active. Services are accessible at:${NC}"
+echo -e "  • Agent Launcher: http://localhost:8080"
+echo -e "  • Tool Runtime: http://localhost:8082"
+echo -e "  • Health check: curl http://localhost:8080/health"
+
+# Wait for user to stop
+wait

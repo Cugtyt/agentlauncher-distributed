@@ -66,7 +66,7 @@ func (lh *LLMHandler) HandleLLMRuntimeError(ctx context.Context, event events.LL
 		}
 	} else {
 		errorResponse := llminterface.ResponseMessageList{
-			llminterface.AssistantMessage{Content: "Runtime error: " + event.Error},
+			llminterface.NewAssistantMessage("Runtime error: " + event.Error),
 		}
 		responseEvent := events.LLMResponseEvent{
 			AgentID:      event.RequestEvent.AgentID,
