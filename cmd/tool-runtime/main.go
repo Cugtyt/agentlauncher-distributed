@@ -61,7 +61,7 @@ func NewToolRuntime() (*ToolRuntime, error) {
 				},
 			},
 		},
-		Function: func(ctx context.Context, params map[string]interface{}) (string, error) {
+		Function: func(ctx context.Context, params map[string]any) (string, error) {
 			operation := params["operation"].(string)
 			a := params["a"].(float64)
 			b := params["b"].(float64)
@@ -97,7 +97,7 @@ func NewToolRuntime() (*ToolRuntime, error) {
 				},
 			},
 		},
-		Function: func(ctx context.Context, params map[string]interface{}) (string, error) {
+		Function: func(ctx context.Context, params map[string]any) (string, error) {
 			city := params["city"].(string)
 			return fmt.Sprintf("Weather in %s: Sunny, 25°C", city), nil
 		},
@@ -109,7 +109,7 @@ func NewToolRuntime() (*ToolRuntime, error) {
 			Description: "Get current time",
 			Parameters:  []llminterface.ToolParamSchema{},
 		},
-		Function: func(ctx context.Context, params map[string]interface{}) (string, error) {
+		Function: func(ctx context.Context, params map[string]any) (string, error) {
 			return time.Now().Format("2006-01-02 15:04:05"), nil
 		},
 	}
@@ -133,7 +133,7 @@ func NewToolRuntime() (*ToolRuntime, error) {
 				},
 			},
 		},
-		Function: func(ctx context.Context, params map[string]interface{}) (string, error) {
+		Function: func(ctx context.Context, params map[string]any) (string, error) {
 			min := int(params["min"].(float64))
 			max := int(params["max"].(float64))
 			result := min + (time.Now().Nanosecond() % (max - min + 1))

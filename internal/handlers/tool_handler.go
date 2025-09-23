@@ -12,7 +12,7 @@ import (
 
 type Tool struct {
 	llminterface.ToolSchema
-	Function func(ctx context.Context, args map[string]interface{}) (string, error)
+	Function func(ctx context.Context, args map[string]any) (string, error)
 }
 
 type ToolHandler struct {
@@ -108,11 +108,11 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 func (th *ToolHandler) executeTool(ctx context.Context, agentID string, toolCall events.ToolCall) events.ToolResult {
 	log.Printf("[%s] Executing tool: %s", agentID, toolCall.ToolName)
 
-	var args map[string]interface{}
+	var args map[string]any
 	if toolCall.Arguments != nil {
 		args = toolCall.Arguments
 	} else {
-		args = make(map[string]interface{})
+		args = make(map[string]any)
 	}
 
 	tool, err := th.GetTool(toolCall.ToolName)

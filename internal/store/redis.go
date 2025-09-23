@@ -42,16 +42,12 @@ func NewRedisClient(redisURL string) (*RedisClient, error) {
 	}, nil
 }
 
-func (r *RedisClient) Set(key string, value interface{}, expiration time.Duration) error {
+func (r *RedisClient) Set(key string, value any, expiration time.Duration) error {
 	return r.client.Set(r.ctx, key, value, expiration).Err()
 }
 
 func (r *RedisClient) Get(key string) (string, error) {
 	return r.client.Get(r.ctx, key).Result()
-}
-
-func (r *RedisClient) HSet(key string, values ...interface{}) error {
-	return r.client.HSet(r.ctx, key, values...).Err()
 }
 
 func (r *RedisClient) HGet(key, field string) (string, error) {
@@ -64,6 +60,14 @@ func (r *RedisClient) Del(keys ...string) error {
 
 func (r *RedisClient) Exists(keys ...string) (int64, error) {
 	return r.client.Exists(r.ctx, keys...).Result()
+}
+
+func (r *RedisClient) HSetWithExpire(key string, expiration time.Duration, values ...any) error {
+	pipe := r.client.Pipeline()
+	pipe.HSet(r.ctx, key, values...)
+	pipe.Expire(r.ctx, key, expiration)
+	_, err := pipe.Exec(r.ctx)
+	return err
 }
 
 func (r *RedisClient) Close() error {

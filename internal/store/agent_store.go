@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 )
@@ -39,7 +40,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 		return fmt.Errorf("failed to marshal agent data: %w", err)
 	}
 
-	if err := as.redis.HSet(as.agentKey(agentID), "data", string(data)); err != nil {
+	if err := as.redis.HSetWithExpire(as.agentKey(agentID), 12*time.Hour, "data", string(data)); err != nil {
 		return fmt.Errorf("failed to store agent data: %w", err)
 	}
 
@@ -66,7 +67,7 @@ func (as *AgentStore) SetConversation(agentID string, messages llminterface.Mess
 		return fmt.Errorf("failed to marshal messages: %w", err)
 	}
 
-	if err := as.redis.HSet(as.agentKey(agentID), "messages", string(messagesData)); err != nil {
+	if err := as.redis.HSetWithExpire(as.agentKey(agentID), 12*time.Hour, "messages", string(messagesData)); err != nil {
 		return fmt.Errorf("failed to update conversation: %w", err)
 	}
 

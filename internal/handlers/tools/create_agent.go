@@ -34,7 +34,7 @@ func NewCreateAgentTool(eventBus *eventbus.DistributedEventBus, toolHandler *han
 				},
 			},
 		},
-		Function: func(ctx context.Context, params map[string]interface{}) (string, error) {
+		Function: func(ctx context.Context, params map[string]any) (string, error) {
 			task, ok := params["task"].(string)
 			if !ok || task == "" {
 				return "", fmt.Errorf("task is required")
