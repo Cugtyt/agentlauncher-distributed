@@ -17,10 +17,9 @@ import (
 )
 
 type AgentRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
-	agentStore   *store.AgentStore
-	messageStore *store.MessageStore
-	handler      *handlers.AgentHandler
+	eventBus   *eventbus.DistributedEventBus
+	agentStore *store.AgentStore
+	handler    *handlers.AgentHandler
 }
 
 func NewAgentRuntime() (*AgentRuntime, error) {
@@ -32,23 +31,23 @@ func NewAgentRuntime() (*AgentRuntime, error) {
 		return nil, err
 	}
 
-	agentStore := store.NewAgentStore(redisURL)
-	messageStore := store.NewMessageStore(redisURL)
+	agentStore, err := store.NewAgentStore(redisURL)
+	if err != nil {
+		return nil, err
+	}
 
-	handler := handlers.NewAgentHandler(eventBus, agentStore, messageStore)
+	handler := handlers.NewAgentHandler(eventBus, agentStore)
 
 	return &AgentRuntime{
-		eventBus:     eventBus,
-		agentStore:   agentStore,
-		messageStore: messageStore,
-		handler:      handler,
+		eventBus:   eventBus,
+		agentStore: agentStore,
+		handler:    handler,
 	}, nil
 }
 
 func (ar *AgentRuntime) Close() error {
 	ar.eventBus.Close()
 	ar.agentStore.Close()
-	ar.messageStore.Close()
 	return nil
 }
 

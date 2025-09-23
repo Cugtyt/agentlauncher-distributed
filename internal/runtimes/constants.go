@@ -5,4 +5,5 @@ const (
 	LLMRuntimeQueueName     = "llm-runtime"
 	ToolRuntimeQueueName    = "tool-runtime"
 	MessageRuntimeQueueName = "message-runtime"
+	AgentLauncherQueueName  = "agent-launcher"
 )

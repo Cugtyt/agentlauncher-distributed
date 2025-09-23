@@ -13,41 +13,73 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
+	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
+	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
+	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
+	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 	"github.com/google/uuid"
 )
 
 const (
-	StatusSuccess = "success"
-	StatusFailed  = "failed"
+	StatusSuccess   = "success"
+	StatusFailed    = "failed"
+	StatusPending   = "pending"
+	StatusCompleted = "completed"
 )
 
 type AgentLauncher struct {
-	eventBus eventbus.EventBus
+	eventBus  *eventbus.DistributedEventBus
+	handler   *handlers.LauncherHandler
+	taskStore *store.TaskStore
 }
 
 type CreateTaskRequest struct {
-	Task         string   `json:"task"`
-	Context      string   `json:"context,omitempty"`
-	ToolNameList []string `json:"tool_name_list,omitempty"`
+	Task         string                    `json:"task"`
+	SystemPrompt string                    `json:"system_prompt,omitempty"`
+	Conversation []llminterface.Message    `json:"conversation,omitempty"`
+	ToolSchemas  []llminterface.ToolSchema `json:"tool_schemas,omitempty"`
 }
 
 type CreateTaskResponse struct {
 	AgentID string `json:"agent_id"`
 	Status  string `json:"status"`
-	Message string `json:"message"`
+}
+
+type GetResultResponse struct {
+	AgentID string `json:"agent_id"`
+	Status  string `json:"status"`
+	Result  string `json:"result,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 func NewAgentLauncher() (*AgentLauncher, error) {
 	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
+	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
 
 	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
 	if err != nil {
 		return nil, err
 	}
 
+	taskStore, err := store.NewTaskStore(redisURL)
+	if err != nil {
+		return nil, err
+	}
+
+	handler := handlers.NewLauncherHandler(taskStore)
+
 	return &AgentLauncher{
-		eventBus: eventBus,
+		eventBus:  eventBus,
+		handler:   handler,
+		taskStore: taskStore,
 	}, nil
+}
+
+func (al *AgentLauncher) Start() error {
+	if err := eventbus.Subscribe(al.eventBus, events.TaskFinishEventName, runtimes.AgentLauncherQueueName, al.handler.HandleTaskFinish); err != nil {
+		return err
+	}
+	return eventbus.Subscribe(al.eventBus, events.TaskErrorEventName, runtimes.AgentLauncherQueueName, al.handler.HandleTaskError)
 }
 
 func (al *AgentLauncher) Close() error {
@@ -68,22 +100,75 @@ func (al *AgentLauncher) createTaskHandler(w http.ResponseWriter, r *http.Reques
 
 	agentID := uuid.New().String()
 
+	if err := al.taskStore.CreateTaskPending(agentID, req.Task); err != nil {
+		log.Printf("Failed to create task in store: %v", err)
+		http.Error(w, "Failed to create task", http.StatusInternalServerError)
+		return
+	}
+
 	taskEvent := events.TaskCreateEvent{
-		AgentID:   agentID,
-		Task:      req.Task,
-		Context:   req.Context,
-		Timestamp: time.Now(),
+		AgentID:      agentID,
+		Task:         req.Task,
+		SystemPrompt: req.SystemPrompt,
+		ToolSchemas:  req.ToolSchemas,
+		Conversation: req.Conversation,
 	}
 
 	if err := al.eventBus.Emit(taskEvent); err != nil {
 		log.Printf("Failed to emit task event: %v", err)
+
+		al.taskStore.DeleteTask(agentID)
+
 		http.Error(w, "Failed to create task", http.StatusInternalServerError)
 		return
 	}
 
 	response := CreateTaskResponse{
 		AgentID: agentID,
-		Status:  StatusSuccess,
+		Status:  StatusPending,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (al *AgentLauncher) getResultHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		http.Error(w, "agent_id parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	task, err := al.taskStore.GetTask(agentID)
+	if err != nil {
+		response := GetResultResponse{
+			AgentID: agentID,
+			Status:  StatusFailed,
+			Message: "Task not found",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	var response GetResultResponse
+	if task.Result != "" {
+		response = GetResultResponse{
+			AgentID: agentID,
+			Status:  StatusCompleted,
+			Result:  task.Result,
+		}
+	} else {
+		response = GetResultResponse{
+			AgentID: agentID,
+			Status:  StatusPending,
+			Message: "Task still in progress",
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -108,7 +193,12 @@ func main() {
 		log.Fatalf("Failed to initialize agent launcher: %v", err)
 	}
 
+	if err := launcher.Start(); err != nil {
+		log.Fatalf("Failed to start agent launcher: %v", err)
+	}
+
 	http.HandleFunc("/tasks", launcher.createTaskHandler)
+	http.HandleFunc("/results", launcher.getResultHandler)
 	http.HandleFunc("/health", launcher.healthHandler)
 
 	server := &http.Server{
