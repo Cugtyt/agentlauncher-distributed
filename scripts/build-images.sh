@@ -4,14 +4,12 @@ set -e
 
 echo "Building Docker images for agentlauncher-distributed..."
 
-# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Build services
-services=("agent-launcher" "agent-runtime" "llm-runtime" "tool-runtime" "message-runtime")
+services=("agent-launcher" "agent-runtime" "llm-runtime" "tool-runtime" )
 
 for service in "${services[@]}"; do
     echo -e "${YELLOW}Building $service...${NC}"
@@ -26,6 +24,5 @@ done
 
 echo -e "${GREEN}All images built successfully!${NC}"
 
-# List built images
 echo -e "\n${YELLOW}Built images:${NC}"
 docker images | grep agentlauncher

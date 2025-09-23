@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/nats-io/nats.go"
 )
 
@@ -105,7 +104,7 @@ func Subscribe[T Event](eventBus *DistributedEventBus, subject, queue string, ha
 
 	sub, err := eventBus.jetStream.QueueSubscribe(subject, queue,
 		func(msg *nats.Msg) {
-			if event, ok := utils.UnmarshalEvent[T](msg.Data, subject); ok {
+			if event, ok := UnmarshalEvent[T](msg.Data, subject); ok {
 				handler(nil, event)
 			}
 			msg.Ack()
@@ -155,4 +154,13 @@ func (deb *DistributedEventBus) Status() string {
 		return fmt.Sprintf("Connected to %s", deb.nats.ConnectedUrl())
 	}
 	return "Disconnected"
+}
+
+func UnmarshalEvent[T any](data []byte, eventName string) (T, bool) {
+	var event T
+	if err := json.Unmarshal(data, &event); err != nil {
+		log.Printf("Failed to unmarshal %s event: %v", eventName, err)
+		return event, false
+	}
+	return event, true
 }
