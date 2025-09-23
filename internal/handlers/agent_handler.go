@@ -11,8 +11,9 @@ import (
 )
 
 type AgentHandler struct {
-	eventBus   *eventbus.DistributedEventBus
-	agentStore *store.AgentStore
+	eventBus              *eventbus.DistributedEventBus
+	agentStore            *store.AgentStore
+	conversationProcessor func([]llminterface.Message) []llminterface.Message
 }
 
 func NewAgentHandler(eb *eventbus.DistributedEventBus, as *store.AgentStore) *AgentHandler {
@@ -20,6 +21,11 @@ func NewAgentHandler(eb *eventbus.DistributedEventBus, as *store.AgentStore) *Ag
 		eventBus:   eb,
 		agentStore: as,
 	}
+}
+
+func (ah *AgentHandler) SetConversationProcessor(processor func([]llminterface.Message) []llminterface.Message) *AgentHandler {
+	ah.conversationProcessor = processor
+	return ah
 }
 
 func (ah *AgentHandler) HandleTaskCreate(ctx context.Context, event events.TaskCreateEvent) {
@@ -135,6 +141,11 @@ func (ah *AgentHandler) HandleLLMResponse(ctx context.Context, event events.LLMR
 	}
 
 	updatedConversation := append(conversation, event.Response...)
+	
+	if ah.conversationProcessor != nil {
+		updatedConversation = ah.conversationProcessor(updatedConversation)
+	}
+	
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
@@ -206,6 +217,11 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 	}
 
 	updatedConversation := append(agent.Messages, toolMessages...)
+	
+	if ah.conversationProcessor != nil {
+		updatedConversation = ah.conversationProcessor(updatedConversation)
+	}
+	
 	if err := ah.agentStore.SetConversation(event.AgentID, updatedConversation); err != nil {
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}

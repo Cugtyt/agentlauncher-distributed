@@ -14,25 +14,20 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
-	"github.com/cugtyt/agentlauncher-distributed/internal/store"
 )
 
 type LLMRuntime struct {
-	eventBus     *eventbus.DistributedEventBus
-	messageStore *store.MessageStore
-	handler      *handlers.LLMHandler
+	eventBus *eventbus.DistributedEventBus
+	handler  *handlers.LLMHandler
 }
 
 func NewLLMRuntime() (*LLMRuntime, error) {
 	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
-	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
 
 	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
 	if err != nil {
 		return nil, err
 	}
-
-	messageStore := store.NewMessageStore(redisURL)
 
 	llmProcessor := func(messages llminterface.RequestMessageList, tools llminterface.RequestToolList, agentID string, eb eventbus.EventBus) (llminterface.ResponseMessageList, error) {
 		log.Printf("[%s] Processing %d messages with %d tools", agentID, len(messages), len(tools))
@@ -46,15 +41,13 @@ func NewLLMRuntime() (*LLMRuntime, error) {
 	handler := handlers.NewLLMHandler(eventBus, llmProcessor)
 
 	return &LLMRuntime{
-		eventBus:     eventBus,
-		messageStore: messageStore,
-		handler:      handler,
+		eventBus: eventBus,
+		handler:  handler,
 	}, nil
 }
 
 func (lr *LLMRuntime) Close() error {
 	lr.eventBus.Close()
-	lr.messageStore.Close()
 	return nil
 }
 
