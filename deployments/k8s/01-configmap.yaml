@@ -6,4 +6,5 @@ metadata:
 data:
   NATS_URL: "nats://nats:4222"
   REDIS_URL: "redis://redis:6379"
+  TOOL_RUNTIME_URL: "http://tool-runtime:8082"
   LOG_LEVEL: "info"

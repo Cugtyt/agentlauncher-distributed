@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
@@ -22,7 +22,10 @@ type LLMRuntime struct {
 }
 
 func NewLLMRuntime() (*LLMRuntime, error) {
-	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		return nil, fmt.Errorf("NATS_URL environment variable is required")
+	}
 
 	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
 	if err != nil {

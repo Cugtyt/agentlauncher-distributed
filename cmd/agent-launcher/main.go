@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cugtyt/agentlauncher-distributed/cmd/utils"
 	"github.com/cugtyt/agentlauncher-distributed/internal/eventbus"
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
@@ -28,16 +29,17 @@ const (
 )
 
 type AgentLauncher struct {
-	eventBus  *eventbus.DistributedEventBus
-	handler   *handlers.LauncherHandler
-	taskStore *store.TaskStore
+	eventBus       *eventbus.DistributedEventBus
+	handler        *handlers.LauncherHandler
+	taskStore      *store.TaskStore
+	toolRuntimeURL string
 }
 
 type CreateTaskRequest struct {
-	Task         string                    `json:"task"`
-	SystemPrompt string                    `json:"system_prompt,omitempty"`
-	Conversation []llminterface.Message    `json:"conversation,omitempty"`
-	ToolSchemas  []llminterface.ToolSchema `json:"tool_schemas,omitempty"`
+	Task         string                 `json:"task"`
+	SystemPrompt string                 `json:"system_prompt,omitempty"`
+	Conversation []llminterface.Message `json:"conversation,omitempty"`
+	Tools        []string               `json:"tools,omitempty"`
 }
 
 type CreateTaskResponse struct {
@@ -53,8 +55,20 @@ type GetResultResponse struct {
 }
 
 func NewAgentLauncher() (*AgentLauncher, error) {
-	natsURL := utils.GetEnv("NATS_URL", "nats://localhost:4222")
-	redisURL := utils.GetEnv("REDIS_URL", "redis://localhost:6379")
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		return nil, fmt.Errorf("NATS_URL environment variable is required")
+	}
+
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		return nil, fmt.Errorf("REDIS_URL environment variable is required")
+	}
+
+	toolRuntimeURL := os.Getenv("TOOL_RUNTIME_URL")
+	if toolRuntimeURL == "" {
+		return nil, fmt.Errorf("TOOL_RUNTIME_URL environment variable is required")
+	}
 
 	eventBus, err := eventbus.NewDistributedEventBus(natsURL)
 	if err != nil {
@@ -69,9 +83,10 @@ func NewAgentLauncher() (*AgentLauncher, error) {
 	handler := handlers.NewLauncherHandler(taskStore)
 
 	return &AgentLauncher{
-		eventBus:  eventBus,
-		handler:   handler,
-		taskStore: taskStore,
+		eventBus:       eventBus,
+		handler:        handler,
+		taskStore:      taskStore,
+		toolRuntimeURL: toolRuntimeURL,
 	}, nil
 }
 
@@ -84,6 +99,38 @@ func (al *AgentLauncher) Start() error {
 
 func (al *AgentLauncher) Close() error {
 	return al.eventBus.Close()
+}
+
+func (al *AgentLauncher) getToolSchemas(toolNames []string) ([]llminterface.ToolSchema, error) {
+	reqBody := struct {
+		Tools []string `json:"tools"`
+	}{
+		Tools: toolNames,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %v", err)
+	}
+
+	resp, err := http.Post(al.toolRuntimeURL+"/schemas", "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tool runtime: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tool runtime returned status %d", resp.StatusCode)
+	}
+
+	var response struct {
+		Schemas []llminterface.ToolSchema `json:"schemas"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	return response.Schemas, nil
 }
 
 func (al *AgentLauncher) createTaskHandler(w http.ResponseWriter, r *http.Request) {
@@ -106,11 +153,19 @@ func (al *AgentLauncher) createTaskHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	toolSchemas, err := al.getToolSchemas(req.Tools)
+	if err != nil {
+		log.Printf("Failed to get tool schemas: %v", err)
+		al.taskStore.DeleteTask(agentID)
+		http.Error(w, "Failed to get tool schemas", http.StatusInternalServerError)
+		return
+	}
+
 	taskEvent := events.TaskCreateEvent{
 		AgentID:      agentID,
 		Task:         req.Task,
 		SystemPrompt: req.SystemPrompt,
-		ToolSchemas:  req.ToolSchemas,
+		ToolSchemas:  toolSchemas,
 		Conversation: req.Conversation,
 	}
 
@@ -181,12 +236,35 @@ func (al *AgentLauncher) healthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp, err := http.Get(al.toolRuntimeURL + "/health")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		http.Error(w, "Tool runtime not ready", http.StatusServiceUnavailable)
+		return
+	}
+	resp.Body.Close()
+
+	if err := al.taskStore.HealthCheck(); err != nil {
+		http.Error(w, "Redis not ready", http.StatusServiceUnavailable)
+		return
+	}
+
+	if !al.eventBus.IsConnected() {
+		http.Error(w, "NATS not ready", http.StatusServiceUnavailable)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
 
 func main() {
-	port := utils.GetEnv("PORT", "8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("PORT environment variable is required")
+	}
 
 	launcher, err := NewAgentLauncher()
 	if err != nil {

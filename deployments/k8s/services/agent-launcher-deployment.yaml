@@ -27,6 +27,16 @@ spec:
             configMapKeyRef:
               name: agentlauncher-config
               key: NATS_URL
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: agentlauncher-config
+              key: REDIS_URL
+        - name: TOOL_RUNTIME_URL
+          valueFrom:
+            configMapKeyRef:
+              name: agentlauncher-config
+              key: TOOL_RUNTIME_URL
         resources:
           requests:
             memory: "128Mi"

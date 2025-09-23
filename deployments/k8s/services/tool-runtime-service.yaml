@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-runtime
+  namespace: agentlauncher
+spec:
+  selector:
+    app: tool-runtime
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+  type: ClusterIP

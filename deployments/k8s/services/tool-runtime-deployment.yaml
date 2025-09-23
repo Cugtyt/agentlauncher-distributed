@@ -17,12 +17,16 @@ spec:
       - name: tool-runtime
         image: agentlauncher/tool-runtime:latest
         imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8082
         env:
         - name: NATS_URL
           valueFrom:
             configMapKeyRef:
               name: agentlauncher-config
               key: NATS_URL
+        - name: PORT
+          value: "8082"
         resources:
           requests:
             memory: "128Mi"
@@ -30,3 +34,15 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 5

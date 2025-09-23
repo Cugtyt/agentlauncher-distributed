@@ -145,6 +145,10 @@ func (ts *TaskStore) TaskExists(agentID string) (bool, error) {
 	return exists > 0, nil
 }
 
+func (ts *TaskStore) HealthCheck() error {
+	return ts.redis.Ping()
+}
+
 func (ts *TaskStore) Close() error {
 	return ts.redis.Close()
 }
