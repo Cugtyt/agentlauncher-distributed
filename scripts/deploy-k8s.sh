@@ -6,6 +6,10 @@ echo "Deploying to Kubernetes..."
 # Create namespace
 kubectl apply -f deployments/k8s/00-namespace.yaml
 
+# Deploy ConfigMap
+echo "Deploying configuration..."
+kubectl apply -f deployments/k8s/01-configmap.yaml
+
 # Deploy infrastructure (NATS, Redis)
 echo "Deploying infrastructure..."
 kubectl apply -f deployments/k8s/infrastructure/

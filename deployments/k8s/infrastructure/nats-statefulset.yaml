@@ -23,7 +23,7 @@ spec:
         - containerPort: 8222
           name: monitor
         command:
-        - /nats-server
+        - nats-server
         - --js
         - --sd=/data
         - --http_port=8222
