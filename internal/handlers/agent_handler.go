@@ -8,6 +8,7 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 	"github.com/cugtyt/agentlauncher-distributed/internal/store"
+	"github.com/cugtyt/agentlauncher-distributed/internal/utils"
 )
 
 type AgentHandler struct {
@@ -44,7 +45,10 @@ func (ah *AgentHandler) HandleTaskCreate(ctx context.Context, event events.TaskC
 }
 
 func (ah *AgentHandler) HandleAgentCreate(ctx context.Context, event events.AgentCreateEvent) {
+	log.Printf("[%s] HandleAgentCreate: Starting agent creation", event.AgentID)
+
 	if exists, _ := ah.agentStore.Exists(event.AgentID); exists {
+		log.Printf("[%s] HandleAgentCreate: Agent already exists", event.AgentID)
 		errorEvent := events.AgentRuntimeErrorEvent{
 			AgentID: event.AgentID,
 			Error:   "Agent with this ID already exists",
@@ -61,6 +65,7 @@ func (ah *AgentHandler) HandleAgentCreate(ctx context.Context, event events.Agen
 		Messages:     event.Conversation,
 	}
 
+	log.Printf("[%s] HandleAgentCreate: Creating agent with data", event.AgentID)
 	if err := ah.agentStore.CreateAgent(agentData); err != nil {
 		log.Printf("[%s] Failed to create agent: %v", event.AgentID, err)
 
@@ -102,7 +107,7 @@ func (ah *AgentHandler) HandleAgentStart(ctx context.Context, event events.Agent
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
 
-	messages := llminterface.MessageList{}
+	messages := []llminterface.Message{}
 	if agent.SystemPrompt != "" {
 		systemMsg := llminterface.NewSystemMessage(agent.SystemPrompt)
 		messages = append(messages, systemMsg)
@@ -207,7 +212,7 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 		return
 	}
 
-	toolMessages := make(llminterface.MessageList, 0, len(event.ToolResults))
+	toolMessages := make([]llminterface.Message, 0, len(event.ToolResults))
 	for _, result := range event.ToolResults {
 		msg := llminterface.NewToolResultMessage(result.ToolCallID, result.ToolName, result.Result)
 		toolMessages = append(toolMessages, msg)
@@ -223,7 +228,7 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 		log.Printf("[%s] Failed to update conversation: %v", event.AgentID, err)
 	}
 
-	messages := llminterface.MessageList{}
+	messages := []llminterface.Message{}
 	if agent.SystemPrompt != "" {
 		systemMsg := llminterface.NewSystemMessage(agent.SystemPrompt)
 		messages = append(messages, systemMsg)
@@ -251,6 +256,11 @@ func (ah *AgentHandler) HandleToolResult(ctx context.Context, event events.Tools
 func (ah *AgentHandler) HandleAgentFinish(ctx context.Context, event events.AgentFinishEvent) {
 	log.Printf("[%s] Agent finished with result: %s", event.AgentID, event.Result)
 
+	if utils.IsPrimaryAgent(event.AgentID) {
+		taskFinishEvent := events.TaskFinishEvent(event)
+		ah.eventBus.Emit(taskFinishEvent)
+	}
+
 	deletedEvent := events.AgentDeletedEvent{
 		AgentID: event.AgentID,
 	}
@@ -259,6 +269,11 @@ func (ah *AgentHandler) HandleAgentFinish(ctx context.Context, event events.Agen
 
 func (ah *AgentHandler) HandleAgentError(ctx context.Context, event events.AgentErrorEvent) {
 	log.Printf("[%s] Agent error handled: %s", event.AgentID, event.Error)
+
+	if utils.IsPrimaryAgent(event.AgentID) {
+		taskErrorEvent := events.TaskErrorEvent(event)
+		ah.eventBus.Emit(taskErrorEvent)
+	}
 
 	deletedEvent := events.AgentDeletedEvent{
 		AgentID: event.AgentID,

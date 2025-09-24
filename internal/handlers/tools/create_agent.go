@@ -10,7 +10,7 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/events"
 	"github.com/cugtyt/agentlauncher-distributed/internal/handlers"
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
-	"github.com/google/uuid"
+	"github.com/cugtyt/agentlauncher-distributed/internal/utils"
 )
 
 func NewCreateAgentTool(eventBus *eventbus.DistributedEventBus, toolHandler *handlers.ToolHandler) handlers.Tool {
@@ -35,6 +35,11 @@ func NewCreateAgentTool(eventBus *eventbus.DistributedEventBus, toolHandler *han
 			},
 		},
 		Function: func(ctx context.Context, params map[string]any) (string, error) {
+			primaryAgentID, ok := ctx.Value("primary_agent_id").(string)
+			if !ok {
+				return "", fmt.Errorf("primary agent ID not found in context")
+			}
+
 			task, ok := params["task"].(string)
 			if !ok || task == "" {
 				return "", fmt.Errorf("task is required")
@@ -55,7 +60,7 @@ func NewCreateAgentTool(eventBus *eventbus.DistributedEventBus, toolHandler *han
 				}
 			}
 
-			agentID := fmt.Sprintf("subagent-%s", uuid.New().String())
+			agentID := utils.CreateSubAgentID(primaryAgentID)
 			log.Printf("Creating sub-agent %s with task: %s, tools: %v", agentID, task, toolsArray)
 
 			var toolSchemas []llminterface.ToolSchema

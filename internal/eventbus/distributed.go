@@ -100,10 +100,12 @@ func Subscribe[T Event](eventBus *DistributedEventBus, subject, queue string, ha
 		return err
 	}
 
-	consumerName := fmt.Sprintf("%s-consumer", queue)
+	consumerName := fmt.Sprintf("%s-%s-consumer", queue, subject)
+	log.Printf("EventBus: Creating JetStream consumer '%s' for subject '%s' with queue '%s'", consumerName, subject, queue)
 
 	sub, err := eventBus.jetStream.QueueSubscribe(subject, queue,
 		func(msg *nats.Msg) {
+			log.Printf("EventBus: Received message on %s", subject)
 			if event, ok := UnmarshalEvent[T](msg.Data, subject); ok {
 				handler(nil, event)
 			}
@@ -116,12 +118,13 @@ func Subscribe[T Event](eventBus *DistributedEventBus, subject, queue string, ha
 	)
 
 	if err != nil {
+		log.Printf("EventBus: ERROR creating subscription for %s: %v", subject, err)
 		return fmt.Errorf("failed to subscribe to %s: %w", subject, err)
 	}
 
 	eventBus.subscriptions = append(eventBus.subscriptions, sub)
 
-	log.Printf("EventBus: Subscribed to %s with queue %s", subject, queue)
+	log.Printf("EventBus: Successfully subscribed to %s with queue %s (consumer: %s)", subject, queue, consumerName)
 	return nil
 }
 

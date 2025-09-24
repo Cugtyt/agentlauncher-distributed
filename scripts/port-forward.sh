@@ -14,15 +14,24 @@ echo -e "${YELLOW}Setting up port forwarding for agentlauncher services...${NC}"
 echo -e "${YELLOW}Checking service status...${NC}"
 kubectl get pods -n agentlauncher
 
-# Wait for agent-launcher to be ready
-echo -e "${YELLOW}Waiting for agent-launcher to be ready...${NC}"
-kubectl wait --for=condition=ready pod -l app=agent-launcher -n agentlauncher --timeout=60s
+# Check if we have any running agent-launcher pods
+RUNNING_PODS=$(kubectl get pods -n agentlauncher -l app=agent-launcher --field-selector=status.phase=Running -o name 2>/dev/null | wc -l)
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ agent-launcher is ready${NC}"
+if [ $RUNNING_PODS -gt 0 ]; then
+    echo -e "${GREEN}✓ Found running agent-launcher pod${NC}"
 else
-    echo -e "${RED}✗ agent-launcher failed to become ready${NC}"
-    exit 1
+    echo -e "${YELLOW}Waiting for agent-launcher to be ready...${NC}"
+    kubectl wait --for=condition=ready pod -l app=agent-launcher -n agentlauncher --timeout=60s
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ agent-launcher failed to become ready${NC}"
+        echo -e "${YELLOW}Checking pod status:${NC}"
+        kubectl get pods -n agentlauncher -l app=agent-launcher
+        kubectl describe pods -n agentlauncher -l app=agent-launcher | tail -10
+        echo -e "${YELLOW}Continuing with port forwarding anyway...${NC}"
+    else
+        echo -e "${GREEN}✓ agent-launcher is ready${NC}"
+    fi
 fi
 
 # Start port forwarding
@@ -32,9 +41,28 @@ echo -e "${GREEN}Tool Runtime API will be available at: http://localhost:8082${N
 echo -e "${GREEN}NATS Monitoring will be available at: http://localhost:8222${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop port forwarding${NC}"
 
-# Port forward all services
-kubectl port-forward -n agentlauncher service/agent-launcher 8080:8080 &
-kubectl port-forward -n agentlauncher service/tool-runtime 8082:8082 &
+# Port forward all services - use specific pods if services aren't working
+echo -e "${YELLOW}Starting port forwarding...${NC}"
+
+# Try service first, fall back to pod if needed
+if kubectl get service -n agentlauncher agent-launcher >/dev/null 2>&1; then
+    kubectl port-forward -n agentlauncher service/agent-launcher 8080:8080 &
+else
+    AGENT_POD=$(kubectl get pods -n agentlauncher -l app=agent-launcher --field-selector=status.phase=Running -o name | head -1)
+    if [ -n "$AGENT_POD" ]; then
+        kubectl port-forward -n agentlauncher $AGENT_POD 8080:8080 &
+    fi
+fi
+
+if kubectl get service -n agentlauncher tool-runtime >/dev/null 2>&1; then
+    kubectl port-forward -n agentlauncher service/tool-runtime 8082:8082 &
+else
+    TOOL_POD=$(kubectl get pods -n agentlauncher -l app=tool-runtime --field-selector=status.phase=Running -o name | head -1)
+    if [ -n "$TOOL_POD" ]; then
+        kubectl port-forward -n agentlauncher $TOOL_POD 8082:8082 &
+    fi
+fi
+
 kubectl port-forward -n agentlauncher nats-0 8222:8222 &
 
 # Keep the script running and handle cleanup

@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: tool-runtime
-        image: agentlauncher/tool-runtime:latest
-        imagePullPolicy: IfNotPresent
+        image: agentlauncher/tool-runtime:{{VERSION}}
+        imagePullPolicy: Never
         ports:
         - containerPort: 8082
         env:

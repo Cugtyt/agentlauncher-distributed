@@ -19,10 +19,6 @@ type Message struct {
 
 func (m Message) GetType() string { return m.Type }
 
-type RequestMessageList []Message
-type ResponseMessageList []Message
-type MessageList []Message
-
 func NewUserMessage(content string) Message {
 	return Message{Type: MessageTypeUser, Content: content}
 }

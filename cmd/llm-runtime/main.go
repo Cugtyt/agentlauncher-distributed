@@ -32,10 +32,10 @@ func NewLLMRuntime() (*LLMRuntime, error) {
 		return nil, err
 	}
 
-	llmProcessor := func(messages llminterface.RequestMessageList, tools llminterface.RequestToolList, agentID string, eb eventbus.EventBus) (llminterface.ResponseMessageList, error) {
+	llmProcessor := func(messages []llminterface.Message, tools llminterface.RequestToolList, agentID string, eb eventbus.EventBus) ([]llminterface.Message, error) {
 		log.Printf("[%s] Processing %d messages with %d tools", agentID, len(messages), len(tools))
 
-		response := llminterface.ResponseMessageList{
+		response := []llminterface.Message{
 			llminterface.NewAssistantMessage("Hello from LLM processor"),
 		}
 		return response, nil

@@ -6,7 +6,7 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 )
 
-func ConvertMessagesToOpenAI(messages llminterface.RequestMessageList) []map[string]any {
+func ConvertMessagesToOpenAI(messages []llminterface.Message) []map[string]any {
 	openaiMessages := make([]map[string]any, 0)
 	var currentToolCalls []map[string]any
 
@@ -133,8 +133,8 @@ func ConvertToolsToOpenAI(tools llminterface.RequestToolList) []map[string]any {
 	return openaiTools
 }
 
-func ConvertOpenAIResponseToMessages(content string, toolCalls []map[string]any) llminterface.ResponseMessageList {
-	response := llminterface.ResponseMessageList{}
+func ConvertOpenAIResponseToMessages(content string, toolCalls []map[string]any) []llminterface.Message {
+	response := []llminterface.Message{}
 
 	if content != "" {
 		response = append(response, llminterface.NewAssistantMessage(content))

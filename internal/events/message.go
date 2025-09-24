@@ -5,8 +5,8 @@ import (
 )
 
 type MessagesAddEvent struct {
-	AgentID  string                   `json:"agent_id"`
-	Messages llminterface.MessageList `json:"messages"`
+	AgentID  string                 `json:"agent_id"`
+	Messages []llminterface.Message `json:"messages"`
 }
 
 func (e MessagesAddEvent) Subject() string { return MessageAddEventName }

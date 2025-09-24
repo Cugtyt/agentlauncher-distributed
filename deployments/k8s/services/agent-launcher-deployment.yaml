@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: agent-launcher
-        image: agentlauncher/agent-launcher:latest
-        imagePullPolicy: IfNotPresent
+        image: agentlauncher/agent-launcher:{{VERSION}}
+        imagePullPolicy: Never
         ports:
         - containerPort: 8080
         env:

@@ -18,7 +18,7 @@ import (
 	"github.com/cugtyt/agentlauncher-distributed/internal/llminterface"
 	"github.com/cugtyt/agentlauncher-distributed/internal/runtimes"
 	"github.com/cugtyt/agentlauncher-distributed/internal/store"
-	"github.com/google/uuid"
+	"github.com/cugtyt/agentlauncher-distributed/internal/utils"
 )
 
 const (
@@ -145,7 +145,7 @@ func (al *AgentLauncher) createTaskHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	agentID := uuid.New().String()
+	agentID := utils.CreatePrimaryAgentID()
 
 	if err := al.taskStore.CreateTaskPending(agentID, req.Task); err != nil {
 		log.Printf("Failed to create task in store: %v", err)

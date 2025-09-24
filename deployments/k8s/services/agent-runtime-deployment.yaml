@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: agent-runtime
-        image: agentlauncher/agent-runtime:latest
-        imagePullPolicy: IfNotPresent
+        image: agentlauncher/agent-runtime:{{VERSION}}
+        imagePullPolicy: Never
         env:
         - name: NATS_URL
           valueFrom:

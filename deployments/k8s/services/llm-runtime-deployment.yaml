@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: llm-runtime
-        image: agentlauncher/llm-runtime:latest
-        imagePullPolicy: IfNotPresent
+        image: agentlauncher/llm-runtime:{{VERSION}}
+        imagePullPolicy: Never
         env:
         - name: NATS_URL
           valueFrom:

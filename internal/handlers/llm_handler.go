@@ -65,7 +65,7 @@ func (lh *LLMHandler) HandleLLMRuntimeError(ctx context.Context, event events.LL
 			log.Printf("[%s] Failed to emit retry request: %v", event.AgentID, err)
 		}
 	} else {
-		errorResponse := llminterface.ResponseMessageList{
+		errorResponse := []llminterface.Message{
 			llminterface.NewAssistantMessage("Runtime error: " + event.Error),
 		}
 		responseEvent := events.LLMResponseEvent{

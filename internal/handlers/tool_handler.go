@@ -108,6 +108,8 @@ func (th *ToolHandler) HandleToolExecution(ctx context.Context, event events.Too
 func (th *ToolHandler) executeTool(ctx context.Context, agentID string, toolCall events.ToolCall) events.ToolResult {
 	log.Printf("[%s] Executing tool: %s", agentID, toolCall.ToolName)
 
+	ctx = context.WithValue(ctx, "primary_agent_id", agentID)
+
 	var args map[string]any
 	if toolCall.Arguments != nil {
 		args = toolCall.Arguments

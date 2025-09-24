@@ -13,15 +13,19 @@ type AgentData struct {
 	Task         string                    `json:"task"`
 	SystemPrompt string                    `json:"system_prompt"`
 	ToolSchemas  []llminterface.ToolSchema `json:"tool_schemas"`
-	Messages     llminterface.MessageList  `json:"messages"`
+	Messages     []llminterface.Message    `json:"messages"`
 }
 
 type AgentStore struct {
 	redis *RedisClient
 }
 
-func (as *AgentStore) agentKey(agentID string) string {
-	return fmt.Sprintf("agent:%s", agentID)
+func (as *AgentStore) agentDataKey(agentID string) string {
+	return fmt.Sprintf("%s:data", agentID)
+}
+
+func (as *AgentStore) agentConversationKey(agentID string) string {
+	return fmt.Sprintf("%s:conversation", agentID)
 }
 
 func NewAgentStore(redisURL string) (*AgentStore, error) {
@@ -40,7 +44,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 		return fmt.Errorf("failed to marshal agent data: %w", err)
 	}
 
-	if err := as.redis.HSetWithExpire(as.agentKey(agentID), 12*time.Hour, "data", string(data)); err != nil {
+	if err := as.redis.Set(as.agentDataKey(agentID), string(data), 12*time.Hour); err != nil {
 		return fmt.Errorf("failed to store agent data: %w", err)
 	}
 
@@ -48,7 +52,7 @@ func (as *AgentStore) SetAgentData(agentID string, agentData *AgentData) error {
 }
 
 func (as *AgentStore) GetAgentData(agentID string) (*AgentData, error) {
-	data, err := as.redis.HGet(as.agentKey(agentID), "data")
+	data, err := as.redis.Get(as.agentDataKey(agentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get agent data: %w", err)
 	}
@@ -61,27 +65,27 @@ func (as *AgentStore) GetAgentData(agentID string) (*AgentData, error) {
 	return &agent, nil
 }
 
-func (as *AgentStore) SetConversation(agentID string, messages llminterface.MessageList) error {
-	messagesData, err := json.Marshal(messages)
+func (as *AgentStore) SetConversation(agentID string, messages []llminterface.Message) error {
+	conversationKey := as.agentConversationKey(agentID)
+
+	// Convert []Message to JSON
+	messagesJSON, err := json.Marshal(messages)
 	if err != nil {
 		return fmt.Errorf("failed to marshal messages: %w", err)
 	}
 
-	if err := as.redis.HSetWithExpire(as.agentKey(agentID), 12*time.Hour, "messages", string(messagesData)); err != nil {
-		return fmt.Errorf("failed to update conversation: %w", err)
-	}
-
-	return nil
+	return as.redis.Set(conversationKey, messagesJSON, 0)
 }
 
-func (as *AgentStore) GetConversation(agentID string) (llminterface.MessageList, error) {
-	messagesStr, err := as.redis.HGet(as.agentKey(agentID), "messages")
+func (as *AgentStore) GetConversation(agentID string) ([]llminterface.Message, error) {
+	conversationKey := as.agentConversationKey(agentID)
+	result, err := as.redis.Get(conversationKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation: %w", err)
 	}
 
-	var messages llminterface.MessageList
-	if err := json.Unmarshal([]byte(messagesStr), &messages); err != nil {
+	var messages []llminterface.Message
+	if err := json.Unmarshal([]byte(result), &messages); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal messages: %w", err)
 	}
 
@@ -89,7 +93,7 @@ func (as *AgentStore) GetConversation(agentID string) (llminterface.MessageList,
 }
 
 func (as *AgentStore) Exists(agentID string) (bool, error) {
-	exists, err := as.redis.Exists(as.agentKey(agentID))
+	exists, err := as.redis.Exists(as.agentDataKey(agentID))
 	if err != nil {
 		return false, fmt.Errorf("failed to check if agent exists: %w", err)
 	}
@@ -97,9 +101,14 @@ func (as *AgentStore) Exists(agentID string) (bool, error) {
 }
 
 func (as *AgentStore) Delete(agentID string) error {
-	if err := as.redis.Del(as.agentKey(agentID)); err != nil {
-		return fmt.Errorf("failed to delete agent: %w", err)
+	if err := as.redis.Del(as.agentDataKey(agentID)); err != nil {
+		return fmt.Errorf("failed to delete agent data: %w", err)
 	}
+
+	if err := as.redis.Del(as.agentConversationKey(agentID)); err != nil {
+		return fmt.Errorf("failed to delete agent conversation: %w", err)
+	}
+
 	return nil
 }
 
