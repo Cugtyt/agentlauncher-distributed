@@ -29,11 +29,13 @@ fi
 echo -e "${YELLOW}Starting port forwarding...${NC}"
 echo -e "${GREEN}Agent Launcher API will be available at: http://localhost:8080${NC}"
 echo -e "${GREEN}Tool Runtime API will be available at: http://localhost:8082${NC}"
+echo -e "${GREEN}NATS Monitoring will be available at: http://localhost:8222${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop port forwarding${NC}"
 
-# Port forward both services
+# Port forward all services
 kubectl port-forward -n agentlauncher service/agent-launcher 8080:8080 &
 kubectl port-forward -n agentlauncher service/tool-runtime 8082:8082 &
+kubectl port-forward -n agentlauncher nats-0 8222:8222 &
 
 # Keep the script running and handle cleanup
 trap 'echo -e "\n${YELLOW}Stopping port forwarding...${NC}"; kill $(jobs -p); exit 0' INT
@@ -41,7 +43,9 @@ trap 'echo -e "\n${YELLOW}Stopping port forwarding...${NC}"; kill $(jobs -p); ex
 echo -e "${GREEN}Port forwarding is active. Services are accessible at:${NC}"
 echo -e "  • Agent Launcher: http://localhost:8080"
 echo -e "  • Tool Runtime: http://localhost:8082"
+echo -e "  • NATS Monitoring: http://localhost:8222"
 echo -e "  • Health check: curl http://localhost:8080/health"
+echo -e "  • NATS info: curl http://localhost:8222/varz"
 
 # Wait for user to stop
 wait
